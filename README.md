@@ -54,12 +54,7 @@ After login, model weights download automatically the first time `train.py` runs
 
 **Data files are NOT pushed to GitHub** — excluded via `.gitignore`.
 
-Reasons:
-- BillSum SFT files total ~430 MB; CaseHOLD MC files total ~193 MB
-- GitHub enforces a 100 MB per-file hard limit and recommends repos stay under 1 GB
-- Raw data is publicly available and can be regenerated from the preprocessing scripts
-
-### What IS in the repo (push this)
+### What IS in the repo
 
 ```
 configs/          YAML training configs
