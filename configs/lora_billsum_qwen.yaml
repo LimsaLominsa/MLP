@@ -1,0 +1,51 @@
+# LoRA fine-tuning config — BillSum × Qwen2.5-1.5B-Instruct
+
+model:
+  name: "Qwen/Qwen2.5-1.5B-Instruct"
+  task: "summarization"               # billsum: seq2seq-style causal LM
+
+lora:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
+  bias: "none"
+  task_type: "CAUSAL_LM"
+
+training:
+  seed: 42
+  num_train_epochs: 1
+  learning_rate: 2.0e-4
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.03
+  per_device_train_batch_size: 2
+  per_device_eval_batch_size: 2
+  gradient_accumulation_steps: 8     # effective batch = 16
+  gradient_checkpointing: true
+  fp16: false
+  bf16: true                          # A100/H100; switch to fp16 for V100/T4
+  optim: "adamw_torch"
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  evaluation_strategy: "steps"
+  eval_steps: 500
+  save_strategy: "steps"
+  save_steps: 500
+  save_total_limit: 3
+  load_best_model_at_end: true
+  metric_for_best_model: "eval_loss"
+  report_to: "wandb"                  # or "tensorboard"
+  logging_steps: 50
+
+data:
+  train: "data/billsum/output/train_sft.jsonl"
+  val:   "data/billsum/output/val_sft.jsonl"
+  test_us: "data/billsum/output/test_us_sft.jsonl"
+  test_ca: "data/billsum/output/test_ca_sft.jsonl"
+  max_input_length: 16384
+  max_output_length: 2048
+  text_field: "input"
+  label_field: "output"
+
+output:
+  dir: "outputs/lora_billsum_qwen"
