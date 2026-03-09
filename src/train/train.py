@@ -114,9 +114,16 @@ def build_model(cfg: dict):
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
+    if cfg["training"]["bf16"]:
+        torch_dtype = torch.bfloat16
+    elif cfg["training"]["fp16"]:
+        torch_dtype = torch.float16
+    else:
+        torch_dtype = torch.float32   # CPU-safe fallback
+
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        torch_dtype=torch.bfloat16 if cfg["training"]["bf16"] else torch.float16,
+        torch_dtype=torch_dtype,
         device_map="auto",
         trust_remote_code=True,
     )
@@ -186,6 +193,7 @@ def main():
     training_args = TrainingArguments(
         output_dir                  = str(output_dir),
         num_train_epochs            = t["num_train_epochs"],
+        max_steps                   = t.get("max_steps", -1),  # -1 = use num_epochs
         per_device_train_batch_size = t["per_device_train_batch_size"],
         per_device_eval_batch_size  = t["per_device_eval_batch_size"],
         gradient_accumulation_steps = t["gradient_accumulation_steps"],
@@ -198,7 +206,7 @@ def main():
         optim                       = t["optim"],
         weight_decay                = t["weight_decay"],
         max_grad_norm               = t["max_grad_norm"],
-        evaluation_strategy         = t["evaluation_strategy"],
+        eval_strategy               = t["evaluation_strategy"],
         eval_steps                  = t["eval_steps"],
         save_strategy               = t["save_strategy"],
         save_steps                  = t["save_steps"],

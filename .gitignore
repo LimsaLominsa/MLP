@@ -4,6 +4,9 @@ data/
 # ── Model outputs and checkpoints ──────────────────────────────────────────
 outputs/
 
+# ── Local test artifacts (not for production) ───────────────────────────────
+configs/test_local_*.yaml
+
 # ── Python cache ────────────────────────────────────────────────────────────
 __pycache__/
 *.pyc
