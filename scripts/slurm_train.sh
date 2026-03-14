@@ -16,7 +16,7 @@
 #SBATCH --partition=Teaching
 #SBATCH --gres=gpu:1
 #SBATCH --mem=14G                # Teaching QOS: 14G per CPU; 2 CPUs = 28G total
-#SBATCH --cpus-per-task=2       # Teaching QOS max: 2 CPUs per job
+#SBATCH --cpus-per-task=1       # Teaching QOS max: 2 CPUs per job
 
 set -e
 

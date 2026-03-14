@@ -22,7 +22,7 @@
 #SBATCH --partition=Teaching
 #SBATCH --gres=gpu:1
 #SBATCH --mem=14G
-#SBATCH --cpus-per-task=2
+#SBATCH --cpus-per-task=1
 
 set -e
 
