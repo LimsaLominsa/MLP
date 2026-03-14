@@ -19,10 +19,10 @@
 #SBATCH --output=logs/sweep-%j.out
 #SBATCH --error=logs/sweep-%j.err
 #SBATCH --time=24:00:00
+#SBATCH --partition=Teaching
 #SBATCH --gres=gpu:1
-#SBATCH --mem=40G
-#SBATCH --cpus-per-task=4
-# #SBATCH --partition=gpu
+#SBATCH --mem=14G
+#SBATCH --cpus-per-task=2
 
 set -e
 

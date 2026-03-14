@@ -13,11 +13,10 @@
 #SBATCH --output=logs/slurm-%x-%j.out
 #SBATCH --error=logs/slurm-%x-%j.err
 #SBATCH --time=24:00:00          # BillSum ~20h; CaseHOLD ~4h — adjust as needed
+#SBATCH --partition=Teaching
 #SBATCH --gres=gpu:1
-#SBATCH --mem=40G
-#SBATCH --cpus-per-task=4
-# Uncomment / change the line below to target the correct GPU partition:
-# #SBATCH --partition=gpu
+#SBATCH --mem=14G                # Teaching QOS: 14G per CPU; 2 CPUs = 28G total
+#SBATCH --cpus-per-task=2       # Teaching QOS max: 2 CPUs per job
 
 set -e
 
