@@ -1,21 +1,18 @@
-# LoRA fine-tuning config — BillSum × Llama-3.2-1B-Instruct
+# Full fine-tuning config — CaseHOLD × Llama-3.2-1B-Instruct
+# All parameters are updated (no LoRA).
+# Compare against: lora_casehold_llama.yaml
+# Note: Llama requires HuggingFace license acceptance + huggingface-cli login.
 
 model:
   name: "meta-llama/Llama-3.2-1B-Instruct"
-  task: "summarization"
+  task: "classification"
 
-lora:
-  r: 16
-  lora_alpha: 32
-  lora_dropout: 0.05
-  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
-  bias: "none"
-  task_type: "CAUSAL_LM"
+# No 'lora' section — train.py treats this as full fine-tuning.
 
 training:
   seed: 42
   num_train_epochs: 1
-  learning_rate: 2.0e-4
+  learning_rate: 2.0e-5
   lr_scheduler_type: "cosine"
   warmup_ratio: 0.03
   per_device_train_batch_size: 2
@@ -31,21 +28,19 @@ training:
   eval_steps: 500
   save_strategy: "steps"
   save_steps: 500
-  save_total_limit: 3
+  save_total_limit: 2
   load_best_model_at_end: true
   metric_for_best_model: "eval_loss"
   report_to: "wandb"
   logging_steps: 50
 
 data:
-  train: "data/billsum/train_sft.jsonl"
-  val:   "data/billsum/val_sft.jsonl"
-  test_us: "data/billsum/test_us_sft.jsonl"
-  test_ca: "data/billsum/test_ca_sft.jsonl"
-  max_input_length: 16384
-  max_output_length: 2048
+  train: "data/casehold/train_mc.jsonl"
+  val:   "data/casehold/validation_mc.jsonl"
+  test:  "data/casehold/test_mc.jsonl"
+  max_length: 1024
   text_field: "input"
   label_field: "output"
 
 output:
-  dir: "outputs/lora_billsum_llama"
+  dir: "outputs/full_casehold_llama"

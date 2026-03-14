@@ -104,9 +104,14 @@ def build_dataset(records: list,
 # ── Model & LoRA setup ────────────────────────────────────────────────────────
 
 def build_model(cfg: dict):
-    """Load base model and apply LoRA adapter."""
+    """
+    Load base model.
+    - If config contains a 'lora' section: apply LoRA adapter (PEFT).
+    - Otherwise: full fine-tuning, all parameters trainable.
+    Returns (model, tokenizer, is_lora).
+    """
     model_name = cfg["model"]["name"]
-    lora_cfg   = cfg["lora"]
+    is_lora    = "lora" in cfg
 
     tokenizer = AutoTokenizer.from_pretrained(
         model_name, trust_remote_code=True
@@ -129,19 +134,27 @@ def build_model(cfg: dict):
     )
     model.config.use_cache = False   # required for gradient checkpointing
 
-    # Apply LoRA
-    lora_config = LoraConfig(
-        r                = lora_cfg["r"],
-        lora_alpha       = lora_cfg["lora_alpha"],
-        lora_dropout     = lora_cfg["lora_dropout"],
-        target_modules   = lora_cfg["target_modules"],
-        bias             = lora_cfg["bias"],
-        task_type        = TaskType.CAUSAL_LM,
-    )
-    model = get_peft_model(model, lora_config)
-    model.print_trainable_parameters()
+    if is_lora:
+        # Parameter-efficient fine-tuning via LoRA
+        lora_cfg = cfg["lora"]
+        lora_config = LoraConfig(
+            r                = lora_cfg["r"],
+            lora_alpha       = lora_cfg["lora_alpha"],
+            lora_dropout     = lora_cfg["lora_dropout"],
+            target_modules   = lora_cfg["target_modules"],
+            bias             = lora_cfg["bias"],
+            task_type        = TaskType.CAUSAL_LM,
+        )
+        model = get_peft_model(model, lora_config)
+        model.print_trainable_parameters()
+    else:
+        # Full fine-tuning — all parameters are trainable
+        for param in model.parameters():
+            param.requires_grad = True
+        total = sum(p.numel() for p in model.parameters())
+        print(f"Full fine-tuning: {total / 1e9:.2f}B trainable parameters")
 
-    return model, tokenizer
+    return model, tokenizer, is_lora
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -172,7 +185,7 @@ def main():
     print(f"Max output length: {max_output}")
 
     # Build model + tokenizer
-    model, tokenizer = build_model(cfg)
+    model, tokenizer, is_lora = build_model(cfg)
 
     # Load and tokenize data
     print("\nPreparing datasets...")
@@ -238,11 +251,12 @@ def main():
     print("\nStarting training...")
     trainer.train()
 
-    # Save final adapter
-    final_dir = output_dir / "final_adapter"
+    # Save final model / adapter
+    save_name = "final_adapter" if is_lora else "final_model"
+    final_dir = output_dir / save_name
     model.save_pretrained(str(final_dir))
     tokenizer.save_pretrained(str(final_dir))
-    print(f"\nAdapter saved to: {final_dir}")
+    print(f"\nModel saved to: {final_dir}")
 
 
 if __name__ == "__main__":

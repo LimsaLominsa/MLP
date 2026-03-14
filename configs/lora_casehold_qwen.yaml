@@ -38,9 +38,9 @@ training:
   logging_steps: 50
 
 data:
-  train: "data/casehold/output/train_mc.jsonl"
-  val:   "data/casehold/output/validation_mc.jsonl"
-  test:  "data/casehold/output/test_mc.jsonl"
+  train: "data/casehold/train_mc.jsonl"
+  val:   "data/casehold/validation_mc.jsonl"
+  test:  "data/casehold/test_mc.jsonl"
   max_length: 1024                    # p95=553 / max=691 (Qwen tokenizer, 200 samples)
   text_field: "input"
   label_field: "output"

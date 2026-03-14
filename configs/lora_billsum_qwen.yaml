@@ -38,10 +38,10 @@ training:
   logging_steps: 50
 
 data:
-  train: "data/billsum/output/train_sft.jsonl"
-  val:   "data/billsum/output/val_sft.jsonl"
-  test_us: "data/billsum/output/test_us_sft.jsonl"
-  test_ca: "data/billsum/output/test_ca_sft.jsonl"
+  train: "data/billsum/train_sft.jsonl"
+  val:   "data/billsum/val_sft.jsonl"
+  test_us: "data/billsum/test_us_sft.jsonl"
+  test_ca: "data/billsum/test_ca_sft.jsonl"
   max_input_length: 16384
   max_output_length: 2048
   text_field: "input"
