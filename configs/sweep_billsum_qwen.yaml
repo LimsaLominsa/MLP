@@ -1,0 +1,49 @@
+# W&B Hyperparameter Sweep — BillSum × Qwen2.5-1.5B-Instruct (LoRA)
+#
+# Tuning strategy (3 phases):
+#   Phase 1 (this file) — Bayesian search over lr × lora_r × dropout
+#                          ~10 runs, kills bad runs early (Hyperband)
+#   Phase 2             — Fix best (lr, r), sweep num_train_epochs (1/2/3)
+#   Phase 3             — Best full config × 3 seeds for variance estimate
+#
+# Step 1: Register sweep (run once, on login node or locally)
+#   wandb sweep configs/sweep_billsum_qwen.yaml
+#   → prints:  wandb: Created sweep with ID: abc12345
+#              wandb: View sweep at: https://wandb.ai/YOUR_ENTITY/YOUR_PROJECT/sweeps/abc12345
+#
+# Step 2: Launch agents on the cluster (each agent runs `count` experiments)
+#   sbatch --array=1-3 scripts/slurm_sweep_agent.sh YOUR_ENTITY/YOUR_PROJECT/abc12345 3
+#   (above submits 3 SLURM jobs, each running 3 sweep experiments = 9 total)
+
+program: src/train/train_sweep.py
+
+method: bayes           # Bayesian optimisation — more efficient than grid for ≤20 runs
+metric:
+  goal: minimize
+  name: eval/loss       # logged by HuggingFace Trainer automatically
+
+early_terminate:        # Hyperband: stop clearly bad runs after 1 epoch
+  type: hyperband
+  min_iter: 1
+  eta: 2
+
+parameters:
+  # ── Required: which base config to start from ────────────────────────────
+  config:
+    value: "configs/lora_billsum_qwen.yaml"
+
+  # ── Primary hyperparameters (highest impact) ──────────────────────────────
+  learning_rate:
+    distribution: log_uniform_values
+    min: 5.0e-5
+    max: 5.0e-4
+
+  lora_r:
+    values: [8, 16, 32]
+
+  # ── Secondary hyperparameters ─────────────────────────────────────────────
+  lora_dropout:
+    values: [0.0, 0.05, 0.1]
+
+  # num_train_epochs is fixed at 1 in Phase 1 to keep each run fast.
+  # Sweep over epochs separately in Phase 2 once lr/r are determined.
