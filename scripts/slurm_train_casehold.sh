@@ -57,9 +57,19 @@ echo " DebugLog : ${DEBUG_LOG}"
 echo " Started  : $(date)"
 echo "=============================="
 
-nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv,noheader
 
 export WANDB_RUN_NAME="${CONFIG_NAME}_job${SLURM_JOB_ID:-0}"
+# Default to offline mode: prevents a W&B network error from killing a multi-hour job.
+# To stream to wandb.ai live:  WANDB_MODE=online sbatch scripts/slurm_train_casehold.sh ...
+export WANDB_MODE="${WANDB_MODE:-offline}"
+
+# ── Pre-check: VRAM smoke check (5 steps) ─────────────────────────────────
+echo ""
+echo "[Pre] VRAM smoke check (5 steps)..."
+python "${REPO_ROOT}/src/train/train_casehold_lora.py" --config "$CONFIG_FILE" --max_steps 5
+echo "[Pre] PASSED — VRAM OK. Starting full training."
+echo ""
 
 # ── Step 1: Train ─────────────────────────────────────────────────────────────
 echo ""

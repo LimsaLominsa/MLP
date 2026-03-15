@@ -75,6 +75,7 @@ class TrainConfig:
     bnb_4bit_quant_type: str = "nf4"
     bnb_4bit_use_double_quant: bool = True
     bnb_4bit_compute_dtype: str = "float16"
+    max_steps: int = -1          # -1 = use num_train_epochs; set to 5 for VRAM smoke check
     lora_r: int = 16
     lora_alpha: int = 32
     lora_dropout: float = 0.05
@@ -213,6 +214,8 @@ def parse_args() -> TrainConfig:
     parser.add_argument("--trust_remote_code", type=_str2bool,
                         default=defaults.get("trust_remote_code", False))
     parser.add_argument("--report_to", type=str, default=defaults.get("report_to", "none"))
+    parser.add_argument("--max_steps", type=int, default=defaults.get("max_steps", -1),
+                        help="Override max_steps (e.g. 5 for VRAM smoke check; -1 = use num_epochs)")
 
     args = parser.parse_args()
 
@@ -256,6 +259,7 @@ def parse_args() -> TrainConfig:
         target_modules=target_modules,
         trust_remote_code=args.trust_remote_code,
         report_to=args.report_to,
+        max_steps=args.max_steps,
     )
 
 
@@ -335,6 +339,7 @@ def run_train(config: TrainConfig) -> None:
     args_kwargs: dict[str, Any] = {
         "output_dir":                   config.output_dir,
         "num_train_epochs":             config.num_train_epochs,
+        "max_steps":                    config.max_steps,
         "learning_rate":                config.learning_rate,
         "per_device_train_batch_size":  config.per_device_train_batch_size,
         "per_device_eval_batch_size":   config.per_device_eval_batch_size,

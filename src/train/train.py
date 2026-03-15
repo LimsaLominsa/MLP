@@ -163,6 +163,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True,
                         help="Path to YAML config file")
+    parser.add_argument("--max-steps", type=int, default=None, dest="max_steps",
+                        help="Override max_steps (e.g. 5 for VRAM smoke check; -1 = use num_epochs)")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -206,7 +208,7 @@ def main():
     training_args = TrainingArguments(
         output_dir                  = str(output_dir),
         num_train_epochs            = t["num_train_epochs"],
-        max_steps                   = t.get("max_steps", -1),  # -1 = use num_epochs
+        max_steps                   = args.max_steps if args.max_steps is not None else t.get("max_steps", -1),
         per_device_train_batch_size = t["per_device_train_batch_size"],
         per_device_eval_batch_size  = t["per_device_eval_batch_size"],
         gradient_accumulation_steps = t["gradient_accumulation_steps"],

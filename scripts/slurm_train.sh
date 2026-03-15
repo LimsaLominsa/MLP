@@ -66,14 +66,25 @@ echo " DebugLog : ${DEBUG_LOG}"
 echo " Started  : $(date)"
 echo "=============================="
 
-nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv,noheader
 echo "Python   : $(which python)"
 python --version
 
 # ── W&B ───────────────────────────────────────────────────────────────────────
 export WANDB_RUN_NAME="${CONFIG_NAME}_job${SLURM_JOB_ID:-0}"
-# Uncomment below if the cluster nodes have no internet access:
-# export WANDB_MODE=offline
+# Default to offline mode: prevents a W&B network error from killing a multi-hour job.
+# To stream to wandb.ai live, set WANDB_MODE=online before calling sbatch, e.g.:
+#   WANDB_MODE=online sbatch scripts/slurm_train.sh lora_billsum_qwen
+export WANDB_MODE="${WANDB_MODE:-offline}"
+
+# ── Pre-check: VRAM smoke check (5 steps) ────────────────────────────────────
+# Runs a forward+backward pass to catch OOM *before* wasting hours of queue time.
+# If this exits non-zero, the job fails immediately (set -Eeuo pipefail).
+echo ""
+echo "[Pre] VRAM smoke check (5 steps)..."
+python "${REPO_ROOT}/src/train/train.py" --config "$CONFIG_FILE" --max-steps 5
+echo "[Pre] PASSED — VRAM OK. Starting full training."
+echo ""
 
 # ── Step 1: Train ─────────────────────────────────────────────────────────────
 echo ""
