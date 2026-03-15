@@ -18,11 +18,21 @@
 #SBATCH --mem=14G                # Teaching QOS: 14G per CPU; 2 CPUs = 28G total
 #SBATCH --cpus-per-task=1       # Teaching QOS max: 2 CPUs per job
 
-set -e
+set -Eeuo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+LOG_DIR="${REPO_ROOT}/logs"
+mkdir -p "${LOG_DIR}"
+
+DEBUG_LOG="${LOG_DIR}/debug-train-${SLURM_JOB_ID:-local}.log"
+exec > >(tee -a "${DEBUG_LOG}") 2>&1
+
+trap 'echo "[ERROR] line ${LINENO}: command failed: ${BASH_COMMAND}"' ERR
 
 # ── Argument ──────────────────────────────────────────────────────────────────
 CONFIG_NAME=${1:?"Usage: sbatch scripts/slurm_train.sh <config_name>"}
-CONFIG_FILE="configs/${CONFIG_NAME}.yaml"
+CONFIG_FILE="${REPO_ROOT}/configs/${CONFIG_NAME}.yaml"
 
 if [ ! -f "$CONFIG_FILE" ]; then
     echo "Error: config not found — $CONFIG_FILE"
@@ -36,17 +46,23 @@ fi
 source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate llm-ft
 
-mkdir -p logs
+cd "${REPO_ROOT}"
 
 # ── Header ────────────────────────────────────────────────────────────────────
 echo "=============================="
 echo " Job ID   : ${SLURM_JOB_ID:-local}"
 echo " Node     : ${SLURMD_NODENAME:-$(hostname)}"
 echo " Config   : $CONFIG_NAME"
+echo " Repo     : ${REPO_ROOT}"
+echo " Workdir  : $(pwd)"
+echo " Submit   : ${SLURM_SUBMIT_DIR:-N/A}"
+echo " DebugLog : ${DEBUG_LOG}"
 echo " Started  : $(date)"
 echo "=============================="
 
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+echo "Python   : $(which python)"
+python --version
 
 # ── W&B ───────────────────────────────────────────────────────────────────────
 export WANDB_RUN_NAME="${CONFIG_NAME}_job${SLURM_JOB_ID:-0}"
@@ -56,7 +72,7 @@ export WANDB_RUN_NAME="${CONFIG_NAME}_job${SLURM_JOB_ID:-0}"
 # ── Step 1: Train ─────────────────────────────────────────────────────────────
 echo ""
 echo "[1/3] Training..."
-python src/train/train.py --config "$CONFIG_FILE"
+python "${REPO_ROOT}/src/train/train.py" --config "$CONFIG_FILE"
 
 # ── Step 2: Inference (generate test-set predictions) ─────────────────────────
 echo ""
@@ -65,10 +81,10 @@ echo "[2/3] Inference..."
 TASK=$(python -c "import yaml; c=yaml.safe_load(open('$CONFIG_FILE')); print(c['model']['task'])")
 
 if [ "$TASK" = "summarization" ]; then
-    python src/evaluate/inference.py --config "$CONFIG_FILE" --split test_us
-    python src/evaluate/inference.py --config "$CONFIG_FILE" --split test_ca
+    python "${REPO_ROOT}/src/evaluate/inference.py" --config "$CONFIG_FILE" --split test_us
+    python "${REPO_ROOT}/src/evaluate/inference.py" --config "$CONFIG_FILE" --split test_ca
 else
-    python src/evaluate/inference.py --config "$CONFIG_FILE" --split test
+    python "${REPO_ROOT}/src/evaluate/inference.py" --config "$CONFIG_FILE" --split test
 fi
 
 # ── Step 3: Evaluate ──────────────────────────────────────────────────────────
@@ -76,22 +92,23 @@ echo ""
 echo "[3/3] Evaluating..."
 
 OUTPUT_DIR=$(python -c "import yaml; c=yaml.safe_load(open('$CONFIG_FILE')); print(c['output']['dir'])")
+OUTPUT_DIR_ABS="${REPO_ROOT}/${OUTPUT_DIR}"
 
 if [ "$TASK" = "summarization" ]; then
-    python src/evaluate/eval_billsum.py \
-        --predictions "${OUTPUT_DIR}/predictions_test_us.jsonl" \
-        --output      "${OUTPUT_DIR}/eval_test_us.json"
-    python src/evaluate/eval_billsum.py \
-        --predictions "${OUTPUT_DIR}/predictions_test_ca.jsonl" \
-        --output      "${OUTPUT_DIR}/eval_test_ca.json"
+    python "${REPO_ROOT}/src/evaluate/eval_billsum.py" \
+        --predictions "${OUTPUT_DIR_ABS}/predictions_test_us.jsonl" \
+        --output      "${OUTPUT_DIR_ABS}/eval_test_us.json"
+    python "${REPO_ROOT}/src/evaluate/eval_billsum.py" \
+        --predictions "${OUTPUT_DIR_ABS}/predictions_test_ca.jsonl" \
+        --output      "${OUTPUT_DIR_ABS}/eval_test_ca.json"
 else
-    python src/evaluate/eval_casehold.py \
-        --predictions "${OUTPUT_DIR}/predictions_test.jsonl" \
-        --output      "${OUTPUT_DIR}/eval_test.json"
+    python "${REPO_ROOT}/src/evaluate/eval_casehold.py" \
+        --predictions "${OUTPUT_DIR_ABS}/predictions_test.jsonl" \
+        --output      "${OUTPUT_DIR_ABS}/eval_test.json"
 fi
 
 echo ""
 echo "=============================="
 echo " Finished : $(date)"
-echo " Results  : $OUTPUT_DIR"
+echo " Results  : ${OUTPUT_DIR_ABS}"
 echo "=============================="

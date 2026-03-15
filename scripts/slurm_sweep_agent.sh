@@ -24,7 +24,17 @@
 #SBATCH --mem=14G
 #SBATCH --cpus-per-task=1
 
-set -e
+set -Eeuo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+LOG_DIR="${REPO_ROOT}/logs"
+mkdir -p "${LOG_DIR}"
+
+DEBUG_LOG="${LOG_DIR}/debug-sweep-${SLURM_JOB_ID:-local}.log"
+exec > >(tee -a "${DEBUG_LOG}") 2>&1
+
+trap 'echo "[ERROR] line ${LINENO}: command failed: ${BASH_COMMAND}"' ERR
 
 SWEEP_ID=${1:?"Usage: sbatch scripts/slurm_sweep_agent.sh <entity/project/sweep_id> [num_runs]"}
 NUM_RUNS=${2:-3}    # max experiments this agent will run before exiting
@@ -33,7 +43,7 @@ NUM_RUNS=${2:-3}    # max experiments this agent will run before exiting
 source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate llm-ft
 
-mkdir -p logs
+cd "${REPO_ROOT}"
 
 echo "=============================="
 echo " Sweep agent starting"
@@ -41,10 +51,16 @@ echo " Sweep ID : $SWEEP_ID"
 echo " Max runs : $NUM_RUNS"
 echo " Job ID   : ${SLURM_JOB_ID:-local}"
 echo " Node     : ${SLURMD_NODENAME:-$(hostname)}"
+echo " Repo     : ${REPO_ROOT}"
+echo " Workdir  : $(pwd)"
+echo " Submit   : ${SLURM_SUBMIT_DIR:-N/A}"
+echo " DebugLog : ${DEBUG_LOG}"
 echo " Started  : $(date)"
 echo "=============================="
 
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+echo "Python   : $(which python)"
+python --version
 
 # Each call to `wandb agent --count N` picks N experiments from the sweep queue
 wandb agent --count "$NUM_RUNS" "$SWEEP_ID"
