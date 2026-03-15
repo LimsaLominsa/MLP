@@ -18,9 +18,9 @@ training:
   per_device_eval_batch_size: 1
   gradient_accumulation_steps: 16   # effective batch = 16 (same as LoRA baseline)
   gradient_checkpointing: true
-  fp16: false
-  bf16: true                        # A100/H100; switch to fp16 for V100/T4
-  optim: "adamw_torch"
+  fp16: true
+  bf16: false
+  optim: "adamw_8bit"               # bitsandbytes 8-bit optimizer: cuts optimizer memory ~4x, fits 2080 Ti 11GB
   weight_decay: 0.01
   max_grad_norm: 1.0
   evaluation_strategy: "steps"
@@ -38,8 +38,8 @@ data:
   val:   "data/billsum/val_sft.jsonl"
   test_us: "data/billsum/test_us_sft.jsonl"
   test_ca: "data/billsum/test_ca_sft.jsonl"
-  max_input_length: 16384
-  max_output_length: 2048
+  max_input_length: 1024             # full FT needs more VRAM than LoRA; keep context short
+  max_output_length: 256
   text_field: "input"
   label_field: "output"
 

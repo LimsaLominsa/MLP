@@ -29,7 +29,9 @@ pip install \
     scipy \
     sentencepiece \
     pyyaml \
-    wandb
+    wandb \
+    trl \
+    scikit-learn
 
 # 4. Install evaluation dependencies
 pip install rouge-score bert-score

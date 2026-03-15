@@ -1,0 +1,44 @@
+# W&B Hyperparameter Sweep — CaseHOLD × Qwen2.5-1.5B-Instruct (QLoRA)
+#
+# Tuning strategy (3 phases):
+#   Phase 1 (this file) — Bayesian search over lr × lora_r × dropout
+#                          ~9 runs, kills poor runs early (Hyperband)
+#   Phase 2             — Fix best (lr, r), sweep num_train_epochs (1/2/3)
+#   Phase 3             — Best config × 3 seeds for variance estimate
+#
+# Step 1: Register sweep (run once on login node)
+#   wandb sweep configs/sweep_casehold_qwen.yaml
+#   → prints:  wandb: Created sweep with ID: abc12345
+#
+# Step 2: Launch agents on the cluster
+#   sbatch --array=1-3 scripts/slurm_sweep_agent.sh YOUR_ENTITY/YOUR_PROJECT/abc12345 3
+
+program: src/train/train_sweep_casehold.py
+
+method: bayes
+metric:
+  goal: minimize
+  name: eval/loss
+
+early_terminate:
+  type: hyperband
+  min_iter: 1
+  eta: 2
+
+parameters:
+  # Base config to load
+  config:
+    value: "configs/qlora_casehold_qwen.yaml"
+
+  # Primary hyperparameters
+  learning_rate:
+    distribution: log_uniform_values
+    min: 5.0e-5
+    max: 5.0e-4
+
+  lora_r:
+    values: [8, 16, 32]
+
+  # Secondary
+  lora_dropout:
+    values: [0.0, 0.05, 0.1]
