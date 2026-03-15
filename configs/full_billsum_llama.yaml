@@ -15,13 +15,13 @@ training:
   learning_rate: 2.0e-5
   lr_scheduler_type: "cosine"
   warmup_ratio: 0.03
-  per_device_train_batch_size: 1
-  per_device_eval_batch_size: 1
-  gradient_accumulation_steps: 16   # effective batch = 16
-  gradient_checkpointing: true
-  fp16: true
-  bf16: false
-  optim: "adamw_8bit"
+  per_device_train_batch_size: 4
+  per_device_eval_batch_size: 4
+  gradient_accumulation_steps: 4    # effective batch = 16
+  gradient_checkpointing: false
+  fp16: false
+  bf16: true
+  optim: "adamw_torch"
   weight_decay: 0.01
   max_grad_norm: 1.0
   evaluation_strategy: "steps"
@@ -39,8 +39,8 @@ data:
   val:   "data/billsum/val_sft.jsonl"
   test_us: "data/billsum/test_us_sft.jsonl"
   test_ca: "data/billsum/test_ca_sft.jsonl"
-  max_input_length: 1024
-  max_output_length: 256
+  max_input_length: 4096
+  max_output_length: 512
   text_field: "input"
   label_field: "output"
 
