@@ -214,6 +214,29 @@ python src/data/billsum/run_preprocessing.py
 
 Output: `data/casehold/*_mc.jsonl`, `data/billsum/*_sft.jsonl`
 
+#### Fix corrupt JSONL lines (run if training throws a JSON parse error)
+
+```bash
+python3 -c "
+import json
+good = []
+bad = 0
+with open('data/casehold/train_mc.jsonl') as f:
+    for i, line in enumerate(f, 1):
+        try:
+            json.loads(line)
+            good.append(line)
+        except json.JSONDecodeError as e:
+            print(f'  skip Line {i}: {e}')
+            bad += 1
+with open('data/casehold/train_mc.jsonl', 'w') as f:
+    f.writelines(good)
+print(f'Finish. keep {len(good)} clauses, skip {bad} clauses.')
+"
+```
+
+Replace `train_mc.jsonl` with `validation_mc.jsonl` or `test_mc.jsonl` to clean other splits. Same pattern applies to BillSum `*_sft.jsonl` files.
+
 ### 3. Training
 
 ```bash
