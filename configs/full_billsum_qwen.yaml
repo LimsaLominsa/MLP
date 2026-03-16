@@ -17,7 +17,7 @@ training:
   per_device_train_batch_size: 4
   per_device_eval_batch_size: 4
   gradient_accumulation_steps: 4    # effective batch = 16
-  gradient_checkpointing: false
+  gradient_checkpointing: true
   fp16: false
   bf16: true
   optim: "adamw_torch"
@@ -27,7 +27,7 @@ training:
   eval_steps: 500
   save_strategy: "steps"
   save_steps: 500
-  save_total_limit: 2
+  save_total_limit: 1
   load_best_model_at_end: true
   metric_for_best_model: "eval_loss"
   report_to: "wandb"
@@ -38,7 +38,7 @@ data:
   val:   "data/billsum/val_sft.jsonl"
   test_us: "data/billsum/test_us_sft.jsonl"
   test_ca: "data/billsum/test_ca_sft.jsonl"
-  max_input_length: 4096
+  max_input_length: 2048
   max_output_length: 512
   text_field: "input"
   label_field: "output"

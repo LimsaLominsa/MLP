@@ -1,34 +1,6 @@
 """
 inference.py
 Run test-set inference using a fine-tuned model (LoRA adapter or full model).
-
-Outputs a predictions JSONL file that eval_billsum.py / eval_casehold.py can consume.
-
-Usage — BillSum:
-  python src/evaluate/inference.py \\
-      --config configs/lora_billsum_qwen.yaml \\
-      --split  test_us
-
-  python src/evaluate/inference.py \\
-      --config configs/lora_billsum_qwen.yaml \\
-      --split  test_ca
-
-Usage — CaseHOLD:
-  python src/evaluate/inference.py \\
-      --config configs/lora_casehold_qwen.yaml \\
-      --split  test
-
-Output file is written to:
-  outputs/<experiment>/predictions_<split>.jsonl
-
-Then run evaluation:
-  python src/evaluate/eval_billsum.py \\
-      --predictions outputs/lora_billsum_qwen/predictions_test_us.jsonl \\
-      --output      outputs/lora_billsum_qwen/eval_test_us.json
-
-  python src/evaluate/eval_casehold.py \\
-      --predictions outputs/lora_casehold_qwen/predictions_test.jsonl \\
-      --output      outputs/lora_casehold_qwen/eval_test.json
 """
 
 import os
@@ -42,8 +14,6 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
 def load_config(path: str) -> dict:
     with open(path, "r") as f:
         return yaml.safe_load(f)
@@ -55,17 +25,12 @@ def load_jsonl(path: str) -> list:
 
 
 def load_model(cfg: dict, output_dir: Path):
-    """
-    Load the fine-tuned model for inference.
-    - LoRA config  → load base model + merge adapter from final_adapter/
-    - Full FT config → load directly from final_model/
-    """
     model_name = cfg["model"]["name"]
     is_lora    = "lora" in cfg
 
-    if cfg["training"]["bf16"] and torch.cuda.is_available():
+    if cfg["training"].get("bf16", False) and torch.cuda.is_available():
         torch_dtype = torch.bfloat16
-    elif cfg["training"]["fp16"] and torch.cuda.is_available():
+    elif cfg["training"].get("fp16", False) and torch.cuda.is_available():
         torch_dtype = torch.float16
     else:
         torch_dtype = torch.float32
@@ -82,7 +47,6 @@ def load_model(cfg: dict, output_dir: Path):
         )
         print(f"Loading LoRA adapter: {adapter_path}")
         model = PeftModel.from_pretrained(base_model, str(adapter_path))
-        # Merge adapter weights into base model for faster inference
         model = model.merge_and_unload()
         tokenizer = AutoTokenizer.from_pretrained(
             str(adapter_path), trust_remote_code=True
@@ -102,150 +66,149 @@ def load_model(cfg: dict, output_dir: Path):
 
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    # Causal LM batched inference requires left-padding
+    tokenizer.padding_side = "left"
 
     model.eval()
     return model, tokenizer
 
 
-# ── Generation helpers ────────────────────────────────────────────────────────
-
-def generate_summary(model, tokenizer, prompt: str,
-                     max_new_tokens: int = 256,
-                     device: str = "cuda") -> str:
-    """Generate a free-form summary (BillSum)."""
+def generate_summaries_batch(model, tokenizer, prompts: list,
+                              max_new_tokens: int = 256) -> list:
+    """Batched summary generation for BillSum."""
     inputs = tokenizer(
-        prompt,
+        prompts,
         return_tensors="pt",
+        padding=True,
         truncation=True,
         max_length=tokenizer.model_max_length,
-    ).to(device)
+    ).to(model.device)
 
     with torch.no_grad():
         output_ids = model.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
-            do_sample=False,          # greedy for reproducibility
-            temperature=1.0,
-            eos_token_id=tokenizer.eos_token_id,
-            pad_token_id=tokenizer.pad_token_id,
-        )
-
-    # Decode only the newly generated tokens (exclude the prompt)
-    new_ids = output_ids[0][inputs["input_ids"].shape[1]:]
-    return tokenizer.decode(new_ids, skip_special_tokens=True).strip()
-
-
-def generate_choice(model, tokenizer, prompt: str,
-                    device: str = "cuda") -> str:
-    """
-    Generate a multiple-choice answer (CaseHOLD).
-    Returns the first token of the generation as the predicted letter (A–E).
-    """
-    inputs = tokenizer(
-        prompt,
-        return_tensors="pt",
-        truncation=True,
-        max_length=tokenizer.model_max_length,
-    ).to(device)
-
-    with torch.no_grad():
-        output_ids = model.generate(
-            **inputs,
-            max_new_tokens=5,         # only need the answer letter
             do_sample=False,
             eos_token_id=tokenizer.eos_token_id,
             pad_token_id=tokenizer.pad_token_id,
         )
 
-    new_ids = output_ids[0][inputs["input_ids"].shape[1]:]
-    raw = tokenizer.decode(new_ids, skip_special_tokens=True).strip()
-    # Extract the first meaningful character (A–E)
-    for ch in raw.upper():
-        if ch in "ABCDE":
-            return ch
-    return raw  # return as-is; eval_casehold.py will flag as invalid
+    # Each sample: strip the prompt tokens (input length may differ due to padding)
+    input_len = inputs["input_ids"].shape[1]
+    results = []
+    for i in range(len(prompts)):
+        new_ids = output_ids[i][input_len:]
+        text = tokenizer.decode(new_ids, skip_special_tokens=True).strip()
+        results.append(text)
+    return results
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+def generate_choices_batch(model, tokenizer, prompts: list) -> list:
+    """Batched choice generation for CaseHOLD."""
+    inputs = tokenizer(
+        prompts,
+        return_tensors="pt",
+        padding=True,
+        truncation=True,
+        max_length=tokenizer.model_max_length,
+    ).to(model.device)
+
+    with torch.no_grad():
+        output_ids = model.generate(
+            **inputs,
+            max_new_tokens=5,
+            do_sample=False,
+            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.pad_token_id,
+        )
+
+    input_len = inputs["input_ids"].shape[1]
+    results = []
+    for i in range(len(prompts)):
+        new_ids = output_ids[i][input_len:]
+        raw = tokenizer.decode(new_ids, skip_special_tokens=True).strip()
+        pred = raw
+        for ch in raw.upper():
+            if ch in "ABCDE":
+                pred = ch
+                break
+        results.append(pred)
+    return results
+
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", required=True,
-                        help="Path to YAML config (same config used for training)")
-    parser.add_argument("--split", required=True,
-                        help="Data split key: test_us | test_ca | test")
-    parser.add_argument("--batch_size", type=int, default=1,
-                        help="Inference batch size (default: 1)")
-    parser.add_argument("--max_new_tokens", type=int, default=256,
-                        help="Max tokens to generate (BillSum only; default: 256)")
+    parser.add_argument("--config", required=True)
+    parser.add_argument("--split", required=True)
+    parser.add_argument("--batch_size", type=int, default=8,
+                        help="Inference batch size (default: 8)")
+    parser.add_argument("--max_new_tokens", type=int, default=256)
     args = parser.parse_args()
 
     cfg = load_config(args.config)
     repo_root  = Path(__file__).resolve().parent.parent.parent
     output_dir = repo_root / cfg["output"]["dir"]
     data_cfg   = cfg["data"]
-    task       = cfg["model"]["task"]  # "summarization" or "classification"
+    task       = cfg["model"]["task"]
 
-    # Resolve the test file path
-    split_key = args.split  # e.g. "test_us", "test_ca", "test"
+    split_key = args.split
     if split_key not in data_cfg:
         raise ValueError(
-            f"Split '{split_key}' not found in config data section. "
-            f"Available keys: {list(data_cfg.keys())}"
+            f"Split '{split_key}' not found in config. "
+            f"Available: {list(data_cfg.keys())}"
         )
     test_path = repo_root / data_cfg[split_key]
 
-    print(f"Config  : {args.config}")
-    print(f"Task    : {task}")
-    print(f"Split   : {split_key}  →  {test_path}")
-    print(f"Output  : {output_dir}")
+    print(f"Config     : {args.config}")
+    print(f"Task       : {task}")
+    print(f"Split      : {split_key}  →  {test_path}")
+    print(f"Output     : {output_dir}")
+    print(f"Batch size : {args.batch_size}")
 
-    # Load model
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model, tokenizer = load_model(cfg, output_dir)
 
-    # Load test records
     records = load_jsonl(str(test_path))
     print(f"Loaded {len(records):,} test records")
 
-    # Run inference
     predictions = []
-    for i, rec in enumerate(records):
-        prompt = rec["input"]
+    batch_size = args.batch_size
+
+    for batch_start in range(0, len(records), batch_size):
+        batch = records[batch_start: batch_start + batch_size]
+        prompts = [r["input"] for r in batch]
 
         if task == "summarization":
-            pred = generate_summary(
-                model, tokenizer, prompt,
-                max_new_tokens=args.max_new_tokens,
-                device=device,
+            preds = generate_summaries_batch(
+                model, tokenizer, prompts, max_new_tokens=args.max_new_tokens
             )
-            entry = {
-                "prediction": pred,
-                "reference":  rec.get("output", rec.get("summary", "")),
-            }
-            # Carry over optional identifier fields
-            for key in ("bill_id", "id"):
-                if key in rec:
-                    entry[key] = rec[key]
-                    break
+            for rec, pred in zip(batch, preds):
+                entry = {
+                    "prediction": pred,
+                    "reference":  rec.get("output", rec.get("summary", "")),
+                }
+                for key in ("bill_id", "id"):
+                    if key in rec:
+                        entry[key] = rec[key]
+                        break
+                predictions.append(entry)
         else:
-            # classification (CaseHOLD)
-            pred = generate_choice(model, tokenizer, prompt, device=device)
-            entry = {
-                "prediction": pred,
-                "reference":  rec.get("output", rec.get("label", "")),
-            }
-            for key in ("example_id", "id"):
-                if key in rec:
-                    entry[key] = rec[key]
-                    break
+            preds = generate_choices_batch(model, tokenizer, prompts)
+            for rec, pred in zip(batch, preds):
+                entry = {
+                    "prediction": pred,
+                    "reference":  rec.get("output", rec.get("label", "")),
+                }
+                for key in ("example_id", "id"):
+                    if key in rec:
+                        entry[key] = rec[key]
+                        break
+                predictions.append(entry)
 
-        predictions.append(entry)
+        done = min(batch_start + batch_size, len(records))
+        if done % 200 == 0 or done == len(records):
+            print(f"  [{done}/{len(records)}] done")
 
-        if (i + 1) % 100 == 0 or (i + 1) == len(records):
-            print(f"  [{i + 1}/{len(records)}] done")
-
-    # Save predictions
     out_file = output_dir / f"predictions_{split_key}.jsonl"
     out_file.parent.mkdir(parents=True, exist_ok=True)
     with open(out_file, "w", encoding="utf-8") as f:
@@ -253,15 +216,14 @@ def main():
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
     print(f"\nPredictions saved → {out_file}")
-    print(f"Next step:")
     if task == "summarization":
-        print(f"  python src/evaluate/eval_billsum.py \\")
-        print(f"      --predictions {out_file} \\")
-        print(f"      --output {output_dir}/eval_{split_key}.json")
+        print(f"Next: python src/evaluate/eval_billsum.py "
+              f"--predictions {out_file} "
+              f"--output {output_dir}/eval_{split_key}.json")
     else:
-        print(f"  python src/evaluate/eval_casehold.py \\")
-        print(f"      --predictions {out_file} \\")
-        print(f"      --output {output_dir}/eval_{split_key}.json")
+        print(f"Next: python src/evaluate/eval_casehold.py "
+              f"--predictions {out_file} "
+              f"--output {output_dir}/eval_{split_key}.json")
 
 
 if __name__ == "__main__":

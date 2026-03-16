@@ -1,0 +1,20 @@
+{
+  "train_runtime": 834.4517,
+  "train_samples_per_second": 36.733,
+  "train_loss": 2.0705080988013917,
+  "seed": 42,
+  "max_seq_length": 1024,
+  "learning_rate": 0.0002,
+  "num_train_epochs": 1,
+  "lora": {
+    "r": 16,
+    "alpha": 32,
+    "dropout": 0.05,
+    "target_modules": [
+      "q_proj",
+      "k_proj",
+      "v_proj",
+      "o_proj"
+    ]
+  }
+}

@@ -47,6 +47,11 @@ try:
 except ImportError:
     SFTConfig = None  # type: ignore[assignment]
 
+try:
+    from trl import DataCollatorForCompletionOnlyLM
+except ImportError:
+    DataCollatorForCompletionOnlyLM = None  # type: ignore[assignment]
+
 
 DEFAULT_TARGET_MODULES = ["q_proj", "k_proj", "v_proj", "o_proj"]
 
@@ -302,6 +307,16 @@ def run_train(config: TrainConfig) -> None:
         tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"
 
+    # Only compute loss on the answer token (mirrors train.py label-only supervision)
+    RESPONSE_TEMPLATE = "\n### Answer:\n"
+    if DataCollatorForCompletionOnlyLM is not None:
+        data_collator = DataCollatorForCompletionOnlyLM(
+            response_template=RESPONSE_TEMPLATE,
+            tokenizer=tokenizer,
+        )
+    else:
+        data_collator = None
+
     quant_config = None
     if config.load_in_4bit:
         quant_config = BitsAndBytesConfig(
@@ -358,7 +373,8 @@ def run_train(config: TrainConfig) -> None:
         "gradient_checkpointing":       config.gradient_checkpointing,
         "lr_scheduler_type":            "cosine",
         "report_to":                    config.report_to,
-        "load_best_model_at_end":       False,
+        "load_best_model_at_end":       True,
+        "metric_for_best_model":        "eval_loss",
     }
     if "dataset_text_field" in args_params:
         args_kwargs["dataset_text_field"] = "text"
@@ -382,6 +398,8 @@ def run_train(config: TrainConfig) -> None:
         "eval_dataset":  dataset["validation"],
         "peft_config":   lora_config,
     }
+    if data_collator is not None:
+        trainer_kwargs["data_collator"] = data_collator
 
     trainer_params = inspect.signature(SFTTrainer.__init__).parameters
     if "tokenizer" in trainer_params:
