@@ -1,94 +1,105 @@
 # legal-llm-finetuning
 
-Research codebase for studying the effect of **Full Fine-Tuning vs. Parameter-Efficient Fine-Tuning (LoRA)** on small-scale LLMs for legal NLP tasks.
+Research codebase studying **LoRA vs. Full Fine-Tuning vs. QLoRA (4-bit)** on small-scale LLMs (~1B parameters) for legal NLP tasks.
+
+**Status: All 8 experiments complete. Results committed to `results/`.**
+
+---
 
 ## Models
 
 | Model | Size | Access |
 |-------|------|--------|
 | Qwen2.5-1.5B-Instruct | 1.5B | Public — no auth needed |
-| Llama-3.2-1B-Instruct | 1B | **Gated** — requires HuggingFace account + license acceptance |
+| Llama-3.2-1B-Instruct | 1B | **Gated** — requires HuggingFace license acceptance |
 
-### Llama Access Setup (required before training)
-
-Llama-3.2 is a gated model. Complete these steps **once** before using it:
-
-1. Visit [https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct) and accept the license
-2. Generate a HuggingFace token at [https://huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) (type: *Read*)
-3. On the GCP server, authenticate:
+### Llama Access Setup
 
 ```bash
-pip install huggingface_hub
-huggingface-cli login
-# paste your token when prompted
+huggingface-cli login   # paste token from huggingface.co/settings/tokens
+# OR
+export HF_TOKEN="hf_your_token_here"
 ```
-
-Or set the environment variable directly (useful for scripts):
-
-```bash
-export HF_TOKEN="hf_your_token_here"   # add to ~/.bashrc to persist
-```
-
-After login, model weights download automatically the first time `train.py` runs.
 
 ---
 
 ## Tasks & Datasets
 
-| Dataset | Task | Evaluation |
-|---------|------|------------|
-| BillSum | Legal summarization (generative) | ROUGE-1/2/L + BERTScore |
-| CaseHOLD | Legal holding prediction (multiple-choice) | Accuracy |
+| Dataset | Task Type | Evaluation Metric |
+|---------|-----------|-------------------|
+| BillSum | Abstractive summarization | ROUGE-1/2/L, BERTScore-F1 |
+| CaseHOLD | 5-way multiple-choice classification | Accuracy |
 
-### Token Length Statistics (verified locally)
+**BillSum test splits:** `test_us` (in-distribution US federal bills) and `test_ca` (out-of-distribution California bills).
 
-| Dataset | Field | p95 tokens | max tokens | Config max_length |
-|---------|-------|-----------|-----------|------------------|
-| BillSum | input (bill text) | 2,941 | 4,652 | 16,384 (team config) |
-| CaseHOLD | input (context + options) | 553 | 691 | **1,024** |
-| CaseHOLD | output (answer letter) | 1 | 1 | 2,048 |
+### Token Length Statistics
+
+| Dataset | p95 tokens | max tokens | `max_seq_length` used |
+|---------|-----------|-----------|----------------------|
+| BillSum (bill text) | 2,941 | 4,652 | 16,384 |
+| CaseHOLD (context + options) | 553 | 691 | 1,024 |
 
 ---
 
-## GitHub & Data Policy
+## Experiment Design
 
-**Data files are NOT pushed to GitHub** — excluded via `.gitignore`.
+8 experiments across 2 models × 2 datasets × 2 methods:
 
-### What IS in the repo
+| ID | Model | Dataset | Method | Training Script | Config |
+|----|-------|---------|--------|-----------------|--------|
+| E1 | Qwen2.5-1.5B | BillSum | LoRA (r=16) | `train.py` | `lora_billsum_qwen.yaml` |
+| E2 | Llama-3.2-1B | BillSum | LoRA (r=16) | `train.py` | `lora_billsum_llama.yaml` |
+| E3 | Qwen2.5-1.5B | BillSum | Full FT | `train.py` | `full_billsum_qwen.yaml` |
+| E4 | Llama-3.2-1B | BillSum | Full FT | `train.py` | `full_billsum_llama.yaml` |
+| E5 | Qwen2.5-1.5B | CaseHOLD | LoRA (r=16) | `train.py` | `lora_casehold_qwen.yaml` |
+| E6 | Llama-3.2-1B | CaseHOLD | LoRA (r=16) | `train.py` | `lora_casehold_llama.yaml` |
+| E7 | Qwen2.5-1.5B | CaseHOLD | QLoRA 4-bit | `train_casehold_lora.py` | `qlora_casehold_qwen.yaml` |
+| E8 | Llama-3.2-1B | CaseHOLD | QLoRA 4-bit | `train_casehold_lora.py` | `qlora_casehold_llama.yaml` |
 
-```
-configs/          YAML training configs
-src/              All Python source code
-scripts/          Server setup and launch scripts
-README.md
-.gitignore
-```
+**Server:** AutoDL H800 80GB · **Conda env:** `llm-ft` · **Seed:** 42 · **Epochs:** 1
 
-### What is NOT in the repo (excluded)
+### Hyperparameters
 
-```
-data/             Preprocessed JSONL files (~600 MB total)
-outputs/          Model checkpoints and predictions
-*.jsonl
-*.png
-```
+| Param | LoRA / Full FT | QLoRA |
+|-------|---------------|-------|
+| LoRA r / alpha | 16 / 32 | 16 / 32 |
+| Target modules | q, k, v, o projections | q, k, v, o projections |
+| learning_rate | 2e-4 | 2e-4 |
+| Quantization | — | 4-bit NF4, double quant, bfloat16 compute |
+| `load_best_model_at_end` | True | True |
 
-### Reproducing data on the GCP server
+---
 
-After cloning the repo on the server, regenerate the processed data:
+## Results
 
-```bash
-# Install preprocessing deps
-pip install pandas huggingface-hub matplotlib
+### BillSum — Summarization (ROUGE-2, BERTScore-F1)
 
-# BillSum — requires raw files uploaded separately (or symlinked)
-python src/data/billsum/run_preprocessing.py
+| Method | Model | test_us ROUGE-2 | test_ca ROUGE-2 | test_us BERTScore | test_ca BERTScore |
+|--------|-------|:--------------:|:--------------:|:----------------:|:----------------:|
+| LoRA | Qwen2.5-1.5B | 0.3725 | 0.1764 | 0.9024 | 0.8570 |
+| LoRA | Llama-3.2-1B | 0.3741 | **0.2116** | 0.8988 | 0.8583 |
+| Full FT | Qwen2.5-1.5B | 0.3688 | 0.1711 | 0.9018 | 0.8558 |
+| Full FT | Llama-3.2-1B | **0.3839** | **0.2116** | 0.9003 | 0.8585 |
 
-# CaseHOLD — downloads raw CSVs automatically from HuggingFace Hub
-python src/data/casehold/run_casehold_preprocessing.py
-```
+Full evaluation JSONs: `results/billsum/`
 
-Alternatively, upload the processed `data/` directory directly via `gcloud storage cp` or `scp`.
+### CaseHOLD — Multiple-Choice Classification (Accuracy, n=5,221)
+
+| Method | Model | Accuracy |
+|--------|-------|:--------:|
+| LoRA | Qwen2.5-1.5B | **0.8602** |
+| LoRA | Llama-3.2-1B | **0.8617** |
+| QLoRA 4-bit | Qwen2.5-1.5B | 0.7395 |
+| QLoRA 4-bit | Llama-3.2-1B | 0.7179 |
+
+Full evaluation JSONs (incl. per-class breakdown): `results/casehold/`
+
+### Key Observations
+
+1. **LoRA ≈ Full FT on BillSum** — ROUGE-2 difference < 0.02, suggesting LoRA is sufficient for summarization at this scale.
+2. **Llama outperforms Qwen on domain generalization** — test_ca ROUGE-2: 0.2116 vs 0.1764 (LoRA). Both models never trained on CA bills.
+3. **QLoRA 4-bit has ~12% accuracy drop vs LoRA** on CaseHOLD (0.74 vs 0.86). Root cause: 4-bit quantization degrades small (~1B) models significantly; additionally, the installed TRL version lacks `DataCollatorForCompletionOnlyLM`, so QLoRA trains with full-sequence loss rather than answer-only loss.
+4. **No invalid predictions** in any CaseHOLD run — the instruction-tuned models reliably output A/B/C/D/E.
 
 ---
 
@@ -97,138 +108,163 @@ Alternatively, upload the processed `data/` directory directly via `gcloud stora
 ```
 legal-llm-finetuning/
 ├── configs/
-│   ├── lora_billsum_qwen.yaml       LoRA config — BillSum × Qwen2.5-1.5B
-│   ├── lora_billsum_llama.yaml      LoRA config — BillSum × Llama-3.2-1B
-│   ├── lora_casehold_qwen.yaml      LoRA config — CaseHOLD × Qwen2.5-1.5B
-│   └── lora_casehold_llama.yaml     LoRA config — CaseHOLD × Llama-3.2-1B
+│   ├── lora_billsum_qwen.yaml        LoRA — BillSum × Qwen2.5-1.5B
+│   ├── lora_billsum_llama.yaml       LoRA — BillSum × Llama-3.2-1B
+│   ├── full_billsum_qwen.yaml        Full FT — BillSum × Qwen2.5-1.5B
+│   ├── full_billsum_llama.yaml       Full FT — BillSum × Llama-3.2-1B
+│   ├── lora_casehold_qwen.yaml       LoRA — CaseHOLD × Qwen2.5-1.5B
+│   ├── lora_casehold_llama.yaml      LoRA — CaseHOLD × Llama-3.2-1B
+│   ├── qlora_casehold_qwen.yaml      QLoRA 4-bit — CaseHOLD × Qwen2.5-1.5B
+│   ├── qlora_casehold_llama.yaml     QLoRA 4-bit — CaseHOLD × Llama-3.2-1B
+│   ├── full_casehold_{qwen,llama}.yaml   (defined, not yet run)
+│   ├── sweep_{billsum,casehold}_qwen.yaml  hyperparameter sweep configs
+│   └── test_local_cpu.yaml           local smoke-test config
+│
 ├── src/
 │   ├── data/
-│   │   ├── billsum/                 BillSum preprocessing scripts
-│   │   └── casehold/                CaseHOLD preprocessing scripts
+│   │   ├── billsum/
+│   │   │   ├── run_preprocessing.py      pipeline entry point
+│   │   │   ├── data_cleaning.py
+│   │   │   ├── data_formatting.py        produces SFT *_sft.jsonl
+│   │   │   └── data_analysis.py
+│   │   └── casehold/
+│   │       ├── run_casehold_preprocessing.py
+│   │       ├── casehold_cleaning.py
+│   │       ├── casehold_formatting.py    produces *_mc.jsonl (multiple-choice)
+│   │       └── casehold_analysis.py
 │   ├── train/
-│   │   ├── train.py                 LoRA training entry point
-│   │   └── smoke_test.py            Local CPU validation + token length check
+│   │   ├── train.py                  LoRA + Full FT (BillSum & CaseHOLD)
+│   │   ├── train_casehold_lora.py    QLoRA 4-bit (CaseHOLD only)
+│   │   ├── train_sweep.py            hyperparameter sweep runner
+│   │   ├── smoke_test.py             local CPU data validation
+│   │   └── local_mini_test.py        local mini training test
 │   └── evaluate/
-│       ├── eval_billsum.py          ROUGE + BERTScore evaluation
-│       ├── eval_casehold.py         Accuracy evaluation
-│       └── check_token_length.py    Token length analysis
+│       ├── inference.py              generate predictions (all tasks)
+│       ├── eval_billsum.py           ROUGE + BERTScore scorer
+│       ├── eval_casehold.py          accuracy + per-class scorer
+│       └── check_token_length.py     token length analysis
+│
+├── results/                          ✅ committed — all eval outputs
+│   ├── billsum/
+│   │   ├── lora_qwen_test_us.json    ROUGE + BERTScore for E1
+│   │   ├── lora_qwen_test_ca.json
+│   │   ├── lora_llama_test_us.json   ROUGE + BERTScore for E2
+│   │   ├── lora_llama_test_ca.json
+│   │   ├── full_qwen_test_us.json    ROUGE + BERTScore for E3
+│   │   ├── full_qwen_test_ca.json
+│   │   ├── full_llama_test_us.json   ROUGE + BERTScore for E4
+│   │   └── full_llama_test_ca.json
+│   └── casehold/
+│       ├── lora_qwen_test.json       accuracy + per-class for E5
+│       ├── lora_llama_test.json      accuracy + per-class for E6
+│       ├── qlora_qwen_test.json      accuracy + per-class for E7
+│       ├── qlora_llama_test.json     accuracy + per-class for E8
+│       ├── qlora_casehold_qwen_run_summary.json   training metadata E7
+│       └── qlora_casehold_llama_run_summary.json  training metadata E8
+│
 ├── scripts/
-│   ├── setup_env.sh                 GCP server environment setup
-│   └── run_experiment.sh            Single experiment launch
-├── data/                            NOT in git — see Data Policy above
-├── outputs/                         NOT in git — model checkpoints
+│   ├── setup_env.sh                  AutoDL server env setup
+│   └── run_experiment.sh             single experiment launcher
+│
+├── autodl_run.ipynb                  Jupyter notebook — full pipeline on AutoDL
+├── data/                             NOT in git (~600 MB JSONL)
+├── outputs/                          NOT in git (symlink → autodl-tmp, model weights)
+├── logs/                             NOT in git (symlink → autodl-tmp)
 ├── .gitignore
 └── README.md
 ```
 
 ---
 
-## Local Validation (CPU only, no GPU needed)
+## Data & Git Policy
 
-Before deploying to GCP, verify your data and tokenizer setup locally:
-
-```bash
-python src/train/smoke_test.py
-```
-
-This checks:
-- All data files exist and record counts are correct
-- All required fields (`text`, `input`, `output`, `label`) are present
-- Qwen tokenizer loads and tokenizes correctly
-- Prints recommended `max_length` values for all configs
-
-Expected output: `Smoke test PASSED`
+| Path | In git | Notes |
+|------|--------|-------|
+| `configs/` | ✅ | All YAML configs |
+| `src/` | ✅ | All source code |
+| `results/` | ✅ | All eval JSON outputs |
+| `autodl_run.ipynb` | ✅ | AutoDL execution notebook |
+| `data/` | ❌ | ~600 MB JSONL, reproduce locally |
+| `outputs/` | ❌ | Model weights (symlink on AutoDL → persistent disk) |
+| `logs/` | ❌ | Training logs (symlink on AutoDL) |
 
 ---
 
-## GCP Server Setup
+## Reproducing the Pipeline
+
+### 1. Environment Setup (AutoDL server)
 
 ```bash
-# 1. Clone the repo
-git clone https://github.com/<your-org>/legal-llm-finetuning.git
-cd legal-llm-finetuning
-
-# 2. Set up Python environment
+git clone https://github.com/LimsaLominsa/MLP.git
+cd MLP
 bash scripts/setup_env.sh
 conda activate llm-ft
-
-# 3. Authenticate HuggingFace (needed for Llama)
-huggingface-cli login
-
-# 4. Upload or regenerate data
-# Option A: upload from local
-# gcloud storage cp -r data/ gs://<your-bucket>/data/
-# gcloud storage cp -r gs://<your-bucket>/data/ ./data/
-
-# Option B: regenerate on server
-python src/data/casehold/run_casehold_preprocessing.py   # downloads automatically
-python src/data/billsum/run_preprocessing.py              # needs raw billsum files
+huggingface-cli login   # required for Llama
 ```
 
----
-
-## Step 1 — Train
+### 2. Data Preprocessing
 
 ```bash
-# Single experiment via script
-bash scripts/run_experiment.sh lora_billsum_qwen
-bash scripts/run_experiment.sh lora_billsum_llama
-bash scripts/run_experiment.sh lora_casehold_qwen
-bash scripts/run_experiment.sh lora_casehold_llama
+# CaseHOLD — auto-downloads from HuggingFace Hub
+python src/data/casehold/run_casehold_preprocessing.py
 
-# Or directly
+# BillSum — requires raw billsum_v4_1/ files
+python src/data/billsum/run_preprocessing.py
+```
+
+Output: `data/casehold/*_mc.jsonl`, `data/billsum/*_sft.jsonl`
+
+### 3. Training
+
+```bash
+# LoRA or Full FT (BillSum and CaseHOLD LoRA)
 python src/train/train.py --config configs/lora_billsum_qwen.yaml
+python src/train/train.py --config configs/full_billsum_llama.yaml
+python src/train/train.py --config configs/lora_casehold_qwen.yaml
+
+# QLoRA 4-bit (CaseHOLD only)
+python src/train/train_casehold_lora.py --config configs/qlora_casehold_qwen.yaml
 ```
 
-Checkpoints and the final LoRA adapter are saved under `outputs/<config_name>/`.
+Adapters saved to `outputs/<config_name>/final_adapter/`.
 
----
+### 4. Inference
 
-## Step 2 — Evaluate
-
-**BillSum** (ROUGE + BERTScore):
 ```bash
+python src/evaluate/inference.py --config configs/lora_billsum_qwen.yaml --split test_us
+python src/evaluate/inference.py --config configs/lora_casehold_qwen.yaml --split test
+```
+
+Predictions saved to `outputs/<config_name>/predictions_<split>.jsonl`.
+
+### 5. Evaluation
+
+```bash
+# BillSum (ROUGE + BERTScore)
 python src/evaluate/eval_billsum.py \
     --predictions outputs/lora_billsum_qwen/predictions_test_us.jsonl \
-    --output      outputs/lora_billsum_qwen/eval_test_us.json
-```
+    --output      results/billsum/lora_qwen_test_us.json
 
-**CaseHOLD** (Accuracy):
-```bash
+# CaseHOLD (accuracy + per-class)
 python src/evaluate/eval_casehold.py \
     --predictions outputs/lora_casehold_qwen/predictions_test.jsonl \
-    --output      outputs/lora_casehold_qwen/eval_test.json
+    --output      results/casehold/lora_qwen_test.json
 ```
 
-> An inference script for generating predictions will be added after GCP environment is confirmed.
+### 6. Or: Run Everything via Notebook
+
+The full pipeline (preprocessing → training → inference → evaluation) is available as a single Jupyter notebook for AutoDL:
+
+```
+autodl_run.ipynb
+```
 
 ---
 
-## Experiment Design
+## Notes on QLoRA Implementation
 
-| Experiment | Model | Dataset | Method |
-|------------|-------|---------|--------|
-| E1 | Qwen2.5-1.5B | BillSum | LoRA (r=16) |
-| E2 | Llama-3.2-1B | BillSum | LoRA (r=16) |
-| E3 | Qwen2.5-1.5B | CaseHOLD | LoRA (r=16) |
-| E4 | Llama-3.2-1B | CaseHOLD | LoRA (r=16) |
-| E5 | Qwen2.5-1.5B | BillSum | Full FT |
-| E6 | Llama-3.2-1B | BillSum | Full FT |
-| E7 | Qwen2.5-1.5B | CaseHOLD | Full FT |
-| E8 | Llama-3.2-1B | CaseHOLD | Full FT |
+`train_casehold_lora.py` uses TRL `SFTTrainer` + bitsandbytes 4-bit quantization. The installed TRL version on AutoDL does **not** export `DataCollatorForCompletionOnlyLM`, so the trainer falls back to full-sequence loss (all tokens supervised, not answer-only). This is the primary reason for the ~12% accuracy gap between QLoRA and LoRA. Future work could:
 
-Baseline: zero-shot inference (no fine-tuning).
-
----
-
-## LoRA Configuration (fixed across all experiments)
-
-| Param | Value |
-|-------|-------|
-| r | 16 |
-| alpha | 32 |
-| dropout | 0.05 |
-| target_modules | q, k, v, o projections |
-| learning_rate | 2e-4 |
-| epochs | 1 |
-| seed | 42 |
+- Upgrade TRL to a version with `DataCollatorForCompletionOnlyLM`
+- Implement manual label masking in the dataset preparation step
+- Run Full FT on CaseHOLD (configs exist: `full_casehold_{qwen,llama}.yaml`) for a third comparison point
