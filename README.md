@@ -2,7 +2,7 @@
 
 Research codebase studying **LoRA vs. Full Fine-Tuning vs. QLoRA (4-bit)** on small-scale LLMs (~1B parameters) for legal NLP tasks.
 
-**Status: All 8 experiments complete. Results committed to `results/`.**
+**Status: All 14 experiments complete (Phase 1 + Phase 2). Results committed to `results/`.**
 
 ---
 
@@ -43,7 +43,7 @@ export HF_TOKEN="hf_your_token_here"
 
 ## Experiment Design
 
-8 experiments across 2 models × 2 datasets × 2 methods:
+### Phase 1: LoRA vs Full FT vs QLoRA (8 experiments)
 
 | ID | Model | Dataset | Method | Training Script | Config |
 |----|-------|---------|--------|-----------------|--------|
@@ -55,6 +55,19 @@ export HF_TOKEN="hf_your_token_here"
 | E6 | Llama-3.2-1B | CaseHOLD | LoRA (r=16) | `train.py` | `lora_casehold_llama.yaml` |
 | E7 | Qwen2.5-1.5B | CaseHOLD | QLoRA 4-bit | `train_casehold_lora.py` | `qlora_casehold_qwen.yaml` |
 | E8 | Llama-3.2-1B | CaseHOLD | QLoRA 4-bit | `train_casehold_lora.py` | `qlora_casehold_llama.yaml` |
+
+### Phase 2: Full FT CaseHOLD + Random Label Baseline (6 experiments)
+
+| ID | Model | Dataset | Method | Training Script | Config |
+|----|-------|---------|--------|-----------------|--------|
+| E9  | Qwen2.5-1.5B | CaseHOLD | Full FT | `train.py` | `full_casehold_qwen.yaml` |
+| E10 | Llama-3.2-1B | CaseHOLD | Full FT | `train.py` | `full_casehold_llama.yaml` |
+| E11 | Qwen2.5-1.5B | BillSum  | LoRA (random labels) | `train.py` | `random_billsum_qwen.yaml` |
+| E12 | Llama-3.2-1B | BillSum  | LoRA (random labels) | `train.py` | `random_billsum_llama.yaml` |
+| E13 | Qwen2.5-1.5B | CaseHOLD | LoRA (random labels) | `train.py` | `random_casehold_qwen.yaml` |
+| E14 | Llama-3.2-1B | CaseHOLD | LoRA (random labels) | `train.py` | `random_casehold_llama.yaml` |
+
+**Random label experiments** shuffle the training set outputs (labels) while keeping inputs unchanged, creating a random input→output mapping. If LoRA models learn genuine task knowledge, their performance should far exceed random-label baselines.
 
 **Server:** AutoDL H800 80GB · **Conda env:** `llm-ft` · **Seed:** 42 · **Epochs:** 1
 
@@ -80,6 +93,8 @@ export HF_TOKEN="hf_your_token_here"
 | LoRA | Llama-3.2-1B | 0.3741 | **0.2116** | 0.8988 | 0.8583 |
 | Full FT | Qwen2.5-1.5B | 0.3688 | 0.1711 | 0.9018 | 0.8558 |
 | Full FT | Llama-3.2-1B | **0.3839** | **0.2116** | 0.9003 | 0.8585 |
+| LoRA (random) | Qwen2.5-1.5B | 0.0161 | 0.0022 | 0.8262 | 0.8168 |
+| LoRA (random) | Llama-3.2-1B | 0.0292 | 0.0144 | 0.8237 | 0.8079 |
 
 Full evaluation JSONs: `results/billsum/`
 
@@ -89,17 +104,23 @@ Full evaluation JSONs: `results/billsum/`
 |--------|-------|:--------:|
 | LoRA | Qwen2.5-1.5B | **0.8602** |
 | LoRA | Llama-3.2-1B | **0.8617** |
+| Full FT | Qwen2.5-1.5B | 0.8339 |
+| Full FT | Llama-3.2-1B | **0.8632** |
 | QLoRA 4-bit | Qwen2.5-1.5B | 0.7395 |
 | QLoRA 4-bit | Llama-3.2-1B | 0.7179 |
+| LoRA (random) | Qwen2.5-1.5B | 0.2300 |
+| LoRA (random) | Llama-3.2-1B | 0.2099 |
 
 Full evaluation JSONs (incl. per-class breakdown): `results/casehold/`
 
 ### Key Observations
 
 1. **LoRA ≈ Full FT on BillSum** — ROUGE-2 difference < 0.02, suggesting LoRA is sufficient for summarization at this scale.
-2. **Llama outperforms Qwen on domain generalization** — test_ca ROUGE-2: 0.2116 vs 0.1764 (LoRA). Both models never trained on CA bills.
-3. **QLoRA 4-bit has ~12% accuracy drop vs LoRA** on CaseHOLD (0.74 vs 0.86). Root cause: 4-bit quantization degrades small (~1B) models significantly; additionally, the installed TRL version lacks `DataCollatorForCompletionOnlyLM`, so QLoRA trains with full-sequence loss rather than answer-only loss.
-4. **No invalid predictions** in any CaseHOLD run — the instruction-tuned models reliably output A/B/C/D/E.
+2. **LoRA ≈ Full FT on CaseHOLD** — Llama Full FT (0.8632) slightly outperforms LoRA (0.8617); Qwen Full FT (0.8339) slightly underperforms LoRA (0.8602), possibly due to overfitting with full-parameter updates.
+3. **Llama outperforms Qwen on domain generalization** — test_ca ROUGE-2: 0.2116 vs 0.1764 (LoRA). Both models never trained on CA bills.
+4. **QLoRA 4-bit has ~12% accuracy drop vs LoRA** on CaseHOLD (0.74 vs 0.86). Root cause: 4-bit quantization degrades small (~1B) models significantly; additionally, the installed TRL version lacks `DataCollatorForCompletionOnlyLM`, so QLoRA trains with full-sequence loss rather than answer-only loss.
+5. **Random label baselines confirm genuine learning** — On BillSum, random-label ROUGE-2 drops to near zero (0.016–0.029 vs 0.37+), a >90% relative decrease. On CaseHOLD, random-label accuracy (~0.21) is close to the random-guess baseline of 0.20 (5-way classification), while LoRA achieves 0.86. This confirms that LoRA models learn meaningful input→output mappings rather than simply memorizing output formats.
+6. **No invalid predictions** in any CaseHOLD run — the instruction-tuned models reliably output A/B/C/D/E.
 
 ---
 
@@ -116,7 +137,12 @@ legal-llm-finetuning/
 │   ├── lora_casehold_llama.yaml      LoRA — CaseHOLD × Llama-3.2-1B
 │   ├── qlora_casehold_qwen.yaml      QLoRA 4-bit — CaseHOLD × Qwen2.5-1.5B
 │   ├── qlora_casehold_llama.yaml     QLoRA 4-bit — CaseHOLD × Llama-3.2-1B
-│   ├── full_casehold_{qwen,llama}.yaml   (defined, not yet run)
+│   ├── full_casehold_qwen.yaml        Full FT — CaseHOLD × Qwen2.5-1.5B
+│   ├── full_casehold_llama.yaml       Full FT — CaseHOLD × Llama-3.2-1B
+│   ├── random_billsum_qwen.yaml       Random Label LoRA — BillSum × Qwen2.5-1.5B
+│   ├── random_billsum_llama.yaml      Random Label LoRA — BillSum × Llama-3.2-1B
+│   ├── random_casehold_qwen.yaml      Random Label LoRA — CaseHOLD × Qwen2.5-1.5B
+│   ├── random_casehold_llama.yaml     Random Label LoRA — CaseHOLD × Llama-3.2-1B
 │   ├── sweep_{billsum,casehold}_qwen.yaml  hyperparameter sweep configs
 │   └── test_local_cpu.yaml           local smoke-test config
 │
@@ -153,12 +179,20 @@ legal-llm-finetuning/
 │   │   ├── full_qwen_test_us.json    ROUGE + BERTScore for E3
 │   │   ├── full_qwen_test_ca.json
 │   │   ├── full_llama_test_us.json   ROUGE + BERTScore for E4
-│   │   └── full_llama_test_ca.json
+│   │   ├── full_llama_test_ca.json
+│   │   ├── random_qwen_test_us.json  ROUGE + BERTScore for E11
+│   │   ├── random_qwen_test_ca.json
+│   │   ├── random_llama_test_us.json ROUGE + BERTScore for E12
+│   │   └── random_llama_test_ca.json
 │   └── casehold/
 │       ├── lora_qwen_test.json       accuracy + per-class for E5
 │       ├── lora_llama_test.json      accuracy + per-class for E6
 │       ├── qlora_qwen_test.json      accuracy + per-class for E7
 │       ├── qlora_llama_test.json     accuracy + per-class for E8
+│       ├── full_qwen_test.json        accuracy + per-class for E9
+│       ├── full_llama_test.json       accuracy + per-class for E10
+│       ├── random_qwen_test.json      accuracy + per-class for E13
+│       ├── random_llama_test.json     accuracy + per-class for E14
 │       ├── qlora_casehold_qwen_run_summary.json   training metadata E7
 │       └── qlora_casehold_llama_run_summary.json  training metadata E8
 │
@@ -166,7 +200,8 @@ legal-llm-finetuning/
 │   ├── setup_env.sh                  AutoDL server env setup
 │   └── run_experiment.sh             single experiment launcher
 │
-├── autodl_run.ipynb                  Jupyter notebook — full pipeline on AutoDL
+├── autodl_run.ipynb                  Jupyter notebook — Phase 1 pipeline on AutoDL
+├── autodl_run_phase2.ipynb           Jupyter notebook — Phase 2 (Full FT CaseHOLD + Random Label)
 ├── data/                             NOT in git (~600 MB JSONL)
 ├── outputs/                          NOT in git (symlink → autodl-tmp, model weights)
 ├── logs/                             NOT in git (symlink → autodl-tmp)
@@ -183,7 +218,8 @@ legal-llm-finetuning/
 | `configs/` | ✅ | All YAML configs |
 | `src/` | ✅ | All source code |
 | `results/` | ✅ | All eval JSON outputs |
-| `autodl_run.ipynb` | ✅ | AutoDL execution notebook |
+| `autodl_run.ipynb` | ✅ | Phase 1 AutoDL execution notebook |
+| `autodl_run_phase2.ipynb` | ✅ | Phase 2 AutoDL execution notebook |
 | `data/` | ❌ | ~600 MB JSONL, reproduce locally |
 | `outputs/` | ❌ | Model weights (symlink on AutoDL → persistent disk) |
 | `logs/` | ❌ | Training logs (symlink on AutoDL) |
@@ -286,8 +322,13 @@ autodl_run.ipynb
 
 ## Notes on QLoRA Implementation
 
-`train_casehold_lora.py` uses TRL `SFTTrainer` + bitsandbytes 4-bit quantization. The installed TRL version on AutoDL does **not** export `DataCollatorForCompletionOnlyLM`, so the trainer falls back to full-sequence loss (all tokens supervised, not answer-only). This is the primary reason for the ~12% accuracy gap between QLoRA and LoRA. Future work could:
+`train_casehold_lora.py` uses TRL `SFTTrainer` + bitsandbytes 4-bit quantization. The installed TRL version on AutoDL does **not** export `DataCollatorForCompletionOnlyLM`, so the trainer falls back to full-sequence loss (all tokens supervised, not answer-only). This is the primary reason for the ~12% accuracy gap between QLoRA and LoRA.
 
-- Upgrade TRL to a version with `DataCollatorForCompletionOnlyLM`
-- Implement manual label masking in the dataset preparation step
-- Run Full FT on CaseHOLD (configs exist: `full_casehold_{qwen,llama}.yaml`) for a third comparison point
+## Notes on Random Label Baseline
+
+Random label experiments (E11–E14) use the same LoRA configuration as normal training, but the training set outputs are randomly shuffled (input text remains unchanged). This creates a sanity check:
+
+- **BillSum:** Random-label ROUGE-2 collapses to 0.016–0.029 (vs 0.37+ with real labels), confirming LoRA learns genuine summarization ability.
+- **CaseHOLD:** Random-label accuracy drops to ~0.21, close to 1/5 = 0.20 random-guess level (vs 0.86 with real labels). The slight difference from 0.20 is due to class distribution bias in the shuffled labels.
+
+Random label data is generated on-the-fly in `autodl_run_phase2.ipynb` (not committed to git).
