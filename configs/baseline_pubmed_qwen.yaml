@@ -1,0 +1,23 @@
+# Baseline (zero-shot) — PubMed Summarization × Qwen2.5-1.5B-Instruct
+# No training. Pretrained model runs inference directly on test data.
+
+model:
+  name: "Qwen/Qwen2.5-1.5B-Instruct"
+  task: "summarization"
+
+training:
+  bf16: true
+  fp16: false
+  seed: 42
+
+data:
+  train: "data/pubmed/train_sft.jsonl"
+  val:   "data/pubmed/val_sft.jsonl"
+  test:  "data/pubmed/test_sft.jsonl"
+  max_input_length: 2048
+  max_output_length: 512
+  text_field: "input"
+  label_field: "output"
+
+output:
+  dir: "outputs/baseline_pubmed_qwen"

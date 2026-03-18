@@ -51,7 +51,7 @@ def compute_bertscore(predictions: list, references: list,
         model_type=model_type,
         batch_size=batch_size,
         lang="en",
-        verbose=True,
+        verbose=False,
     )
     f1 = F1.tolist()
     return {"bertscore_f1": {
@@ -62,7 +62,8 @@ def compute_bertscore(predictions: list, references: list,
 
 def evaluate(predictions_file: str,
              output_file: str = None,
-             use_bertscore: bool = True):
+             use_bertscore: bool = True,
+             bertscore_model: str = "roberta-large"):
 
     records     = load_jsonl(predictions_file)
     predictions = [r["prediction"] for r in records]
@@ -75,7 +76,7 @@ def evaluate(predictions_file: str,
 
     # BERTScore
     if use_bertscore:
-        results.update(compute_bertscore(predictions, references))
+        results.update(compute_bertscore(predictions, references, model_type=bertscore_model))
 
     # Print summary
     print("\n" + "=" * 50)
@@ -99,10 +100,13 @@ if __name__ == "__main__":
     parser.add_argument("--predictions", required=True)
     parser.add_argument("--output",      default=None)
     parser.add_argument("--no_bertscore", action="store_true")
+    parser.add_argument("--bertscore_model", default="roberta-large",
+                        help="BERTScore model name or local path (default: roberta-large)")
     args = parser.parse_args()
 
     evaluate(
         predictions_file = args.predictions,
         output_file      = args.output,
         use_bertscore    = not args.no_bertscore,
+        bertscore_model  = args.bertscore_model,
     )

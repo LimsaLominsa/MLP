@@ -247,6 +247,7 @@ legal-llm-finetuning/
 │   ├── full_nfcorpus_{qwen,llama}.yaml       Full FT — NFCorpus
 │   ├── random_nfcorpus_{qwen,llama}.yaml     Random Label — NFCorpus
 │   ├── baseline_nfcorpus_{qwen,llama}.yaml   Baseline (zero-shot) — NFCorpus
+│   ├── baseline_pubmed_{qwen,llama}.yaml     Baseline (zero-shot) — PubMed
 │   ├── sweep_{billsum,casehold}_qwen.yaml    Hyperparameter sweep configs
 │   └── test_local_cpu.yaml                   Local smoke-test config
 │
@@ -305,16 +306,6 @@ legal-llm-finetuning/
 ├── autodl_run_phase3_nfcorpus.ipynb  Phase 3a pipeline (NFCorpus experiments)
 ├── data/                             NOT in git (symlink, ~600 MB JSONL)
 ├── outputs/                          NOT in git (symlink → autodl-tmp, full model weights)
-├── logs/                             NOT in git (symlink → autodl-tmp)
-├── .gitignore
-└── README.md
-```
-│   └── run_experiment.sh             single experiment launcher
-│
-├── autodl_run.ipynb                  Jupyter notebook — Phase 1 pipeline on AutoDL
-├── autodl_run_phase2.ipynb           Jupyter notebook — Phase 2 (Full FT CaseHOLD + Random Label)
-├── data/                             NOT in git (~600 MB JSONL)
-├── outputs/                          NOT in git (symlink → autodl-tmp, model weights)
 ├── logs/                             NOT in git (symlink → autodl-tmp)
 ├── .gitignore
 └── README.md
