@@ -1,5 +1,5 @@
 # ── Preprocessed data (large files, regenerate on server) ──────────────────
-data/
+data
 
 # ── Model outputs and checkpoints ──────────────────────────────────────────
 outputs/
