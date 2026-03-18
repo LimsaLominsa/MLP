@@ -1,0 +1,44 @@
+# Full fine-tuning config — NFCorpus Reranking × Qwen2.5-1.5B-Instruct
+
+model:
+  name: "Qwen/Qwen2.5-1.5B-Instruct"
+  task: "reranking"
+
+# No 'lora' section — train.py treats this as full fine-tuning.
+
+training:
+  seed: 42
+  num_train_epochs: 3
+  learning_rate: 2.0e-5             # lower LR for full FT
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.03
+  per_device_train_batch_size: 8
+  per_device_eval_batch_size: 8
+  gradient_accumulation_steps: 2     # effective batch = 16
+  gradient_checkpointing: true
+  fp16: false
+  bf16: true
+  optim: "adamw_torch"
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  evaluation_strategy: "steps"
+  eval_steps: 200
+  save_strategy: "steps"
+  save_steps: 200
+  save_total_limit: 1
+  load_best_model_at_end: true
+  metric_for_best_model: "eval_loss"
+  report_to: "wandb"
+  logging_steps: 50
+
+data:
+  train: "data/nfcorpus/train_sft.jsonl"
+  val:   "data/nfcorpus/val_sft.jsonl"
+  test:  "data/nfcorpus/test_sft.jsonl"
+  max_input_length: 1024
+  max_output_length: 64
+  text_field: "input"
+  label_field: "output"
+
+output:
+  dir: "outputs/full_nfcorpus_qwen"

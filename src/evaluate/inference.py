@@ -192,6 +192,19 @@ def main():
                         entry[key] = rec[key]
                         break
                 predictions.append(entry)
+        elif task == "reranking":
+            preds = generate_summaries_batch(
+                model, tokenizer, prompts, max_new_tokens=args.max_new_tokens
+            )
+            for rec, pred in zip(batch, preds):
+                entry = {
+                    "prediction": pred,
+                    "reference":  rec.get("output", ""),
+                    "relevance":  rec.get("relevance", []),
+                }
+                if "id" in rec:
+                    entry["id"] = rec["id"]
+                predictions.append(entry)
         else:
             preds = generate_choices_batch(model, tokenizer, prompts)
             for rec, pred in zip(batch, preds):
@@ -218,6 +231,10 @@ def main():
     print(f"\nPredictions saved → {out_file}")
     if task == "summarization":
         print(f"Next: python src/evaluate/eval_billsum.py "
+              f"--predictions {out_file} "
+              f"--output {output_dir}/eval_{split_key}.json")
+    elif task == "reranking":
+        print(f"Next: python src/evaluate/eval_rerank.py "
               f"--predictions {out_file} "
               f"--output {output_dir}/eval_{split_key}.json")
     else:
