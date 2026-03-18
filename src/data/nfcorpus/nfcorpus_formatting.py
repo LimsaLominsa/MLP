@@ -74,7 +74,7 @@ def load_nfcorpus():
     print(f"  Queries: {len(queries):,} queries")
 
     print("Downloading NFCorpus qrels...")
-    qrels_ds = load_dataset("BeIR/nfcorpus")
+    qrels_ds = load_dataset("BeIR/nfcorpus-qrels")
     qrels = {}
     for split_name in qrels_ds:
         qrels[split_name] = defaultdict(dict)
