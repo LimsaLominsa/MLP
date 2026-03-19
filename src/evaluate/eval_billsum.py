@@ -53,9 +53,9 @@ def compute_bertscore(predictions: list, references: list,
         lang="en",
         verbose=False,
     )
-    # 本地路径不在 bert_score 内置映射中，需要手动指定层数
+    # Local path is not in bert_score's built-in mapping; must specify num_layers manually
     if model_type and os.path.isdir(model_type):
-        kwargs["num_layers"] = 17  # roberta-large 默认层数
+        kwargs["num_layers"] = 17  # default for roberta-large
     _, _, F1 = bert_score.score(predictions, references, **kwargs)
     f1 = F1.tolist()
     return {"bertscore_f1": {
