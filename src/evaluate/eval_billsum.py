@@ -13,6 +13,7 @@ Predictions file format (one JSON per line):
 
 import json
 import argparse
+import os
 import numpy as np
 from pathlib import Path
 
@@ -46,13 +47,16 @@ def compute_bertscore(predictions: list, references: list,
                       batch_size: int = 16) -> dict:
     """Compute BERTScore F1 (semantic similarity)."""
     import bert_score
-    _, _, F1 = bert_score.score(
-        predictions, references,
+    kwargs = dict(
         model_type=model_type,
         batch_size=batch_size,
         lang="en",
         verbose=False,
     )
+    # 本地路径不在 bert_score 内置映射中，需要手动指定层数
+    if model_type and os.path.isdir(model_type):
+        kwargs["num_layers"] = 17  # roberta-large 默认层数
+    _, _, F1 = bert_score.score(predictions, references, **kwargs)
     f1 = F1.tolist()
     return {"bertscore_f1": {
         "mean": float(np.mean(f1)),
