@@ -1,0 +1,49 @@
+# LoRA fine-tuning config — CaseHOLD × Llama-3.2-1B-Instruct
+
+model:
+  name: "meta-llama/Llama-3.2-1B-Instruct"
+  task: "classification"
+
+lora:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
+  bias: "none"
+  task_type: "CAUSAL_LM"
+
+training:
+  seed: 42
+  num_train_epochs: 1
+  learning_rate: 2.0e-4
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.03
+  per_device_train_batch_size: 8
+  per_device_eval_batch_size: 8
+  gradient_accumulation_steps: 2
+  gradient_checkpointing: false
+  fp16: false
+  bf16: true
+  optim: "adamw_torch"
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  evaluation_strategy: "steps"
+  eval_steps: 500
+  save_strategy: "steps"
+  save_steps: 500
+  save_total_limit: 3
+  load_best_model_at_end: true
+  metric_for_best_model: "eval_loss"
+  report_to: "wandb"
+  logging_steps: 50
+
+data:
+  train: "data/casehold/train_mc.jsonl"
+  val:   "data/casehold/validation_mc.jsonl"
+  test:  "data/casehold/test_mc.jsonl"
+  max_length: 1024                    # p95~553 / max~691 (estimated from Qwen tokenizer; verify with Llama after auth)
+  text_field: "input"
+  label_field: "output"
+
+output:
+  dir: "outputs/lora_casehold_llama"

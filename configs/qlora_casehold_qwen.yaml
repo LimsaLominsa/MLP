@@ -1,0 +1,55 @@
+# QLoRA fine-tuning config — CaseHOLD × Qwen2.5-1.5B-Instruct
+# Method: 4-bit quantisation (QLoRA) via bitsandbytes + TRL SFTTrainer
+# GPU requirement: 11GB+ (RTX 2080 Ti / T4 / V100-16G)
+# Compare against: lora_casehold_qwen.yaml (standard LoRA, train.py)
+#
+# Run:
+#   python src/train/train_casehold_lora.py --config configs/qlora_casehold_qwen.yaml
+
+model:
+  name: "Qwen/Qwen2.5-1.5B-Instruct"
+  task: "classification"
+
+lora:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
+  bias: "none"
+  task_type: "CAUSAL_LM"
+
+qlora:
+  load_in_4bit: true                 # H800 80GB: no quantisation needed
+  bnb_4bit_quant_type: "nf4"
+  bnb_4bit_use_double_quant: true
+  bnb_4bit_compute_dtype: "bfloat16"
+
+training:
+  seed: 42
+  num_train_epochs: 1
+  learning_rate: 2.0e-4
+  warmup_ratio: 0.03
+  per_device_train_batch_size: 8
+  per_device_eval_batch_size: 8
+  gradient_accumulation_steps: 2     # effective batch = 16
+  gradient_checkpointing: false
+  weight_decay: 0.0
+  logging_steps: 20
+  eval_steps: 400
+  save_steps: 400
+  save_total_limit: 2
+  report_to: "wandb"
+  load_best_model_at_end: true
+  metric_for_best_model: "eval_loss"
+  evaluation_strategy: "steps"
+  save_strategy: "steps"
+
+data:
+  train: "data/casehold/train_mc.jsonl"
+  val:   "data/casehold/validation_mc.jsonl"
+  test:  "data/casehold/test_mc.jsonl"
+  max_length: 1024
+  text_field: "text"                  # SFTTrainer reads the 'text' field (full prompt+answer)
+
+output:
+  dir: "outputs/qlora_casehold_qwen"

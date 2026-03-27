@@ -1,0 +1,10 @@
+accelerate
+bitsandbytes
+datasets
+evaluate
+peft
+scikit-learn
+sentencepiece
+torch
+transformers
+trl

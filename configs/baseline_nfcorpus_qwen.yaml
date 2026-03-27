@@ -1,0 +1,17 @@
+data:
+  label_field: output
+  max_input_length: 1024
+  max_output_length: 64
+  test: data/nfcorpus/test_sft.jsonl
+  text_field: input
+  train: data/nfcorpus/train_sft.jsonl
+  val: data/nfcorpus/val_sft.jsonl
+model:
+  name: Qwen/Qwen2.5-1.5B-Instruct
+  task: reranking
+output:
+  dir: outputs/baseline_nfcorpus_qwen
+training:
+  bf16: true
+  fp16: false
+  seed: 42

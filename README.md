@@ -1,30 +1,252 @@
-# G104 Personal Code Snapshot
+# legal-llm-finetuning
 
-This folder is a cleaned GitHub-ready snapshot of the code I contributed locally for the final G104 coursework project.
+Research codebase studying **LoRA vs. Full Fine-Tuning vs. QLoRA (4-bit)** on small-scale LLMs (~1B parameters) across legal and medical NLP tasks.
 
-## Included
+This merged version also includes an additional local upload for the final G104 faithfulness study, notably the final-stage `src/g104_pipeline/` code, extra configs/scripts, and the `data_preprocessing/` folder for BillSum and CaseHOLD.
 
-- `configs/`
-  - experiment configs for the final cross-domain faithfulness setup
-- `scripts/`
-  - run scripts, plotting scripts, and cluster helpers
-- `src/g104_pipeline/`
-  - local pipeline code for training, evaluation, deletion analysis, and representation analysis
-- `data_preprocessing/billsum/`
-  - BillSum preprocessing scripts
-- `data_preprocessing/casehold/`
-  - CaseHOLD preprocessing scripts
-- `requirements.txt`
+**Status:**
+- **Phase 1–2 (Legal):** All 14 experiments complete. Results in `results/billsum/` and `results/casehold/`.
+- **Phase 3a (Medical — NFCorpus Reranking):** All 8 experiments complete (incl. baseline). Results in `results/nfcorpus/`.
+- **Phase 3b (Medical — PubMed Summarization):** All 8 experiments complete (incl. baseline). Results in `results/pubmed/`.
 
-## Not Included
+---
 
-- teammate base repository snapshot
-- model weights
-- results
-- logs
-- generated datasets
+## Models
 
-## Notes
+| Model | Size | Access |
+|-------|------|--------|
+| Qwen2.5-1.5B-Instruct | 1.5B | Public — no auth needed |
+| Llama-3.2-1B-Instruct | 1B | **Gated** — requires HuggingFace license acceptance |
 
-- A few scripts assume project-relative paths such as `outputs/` and `data/`.
-- Remote helper scripts still target the `gala1` workflow used in this project.
+### Llama Access Setup
+
+```bash
+huggingface-cli login   # paste token from huggingface.co/settings/tokens
+# OR
+export HF_TOKEN="hf_your_token_here"
+```
+
+---
+
+## Tasks & Datasets
+
+| Dataset | Domain | Task Type | Evaluation Metric | Train Size |
+|---------|--------|-----------|-------------------|------------|
+| BillSum | Legal | Abstractive summarization | ROUGE-1/2/L, BERTScore-F1 | 18,949 |
+| CaseHOLD | Legal | 5-way multiple-choice classification | Accuracy | 45,000 |
+| PubMed | Medical | Abstractive summarization | ROUGE-1/2/L, BERTScore-F1 | 20,000 |
+| NFCorpus | Medical | Document reranking (top-5) | NDCG@5, MAP@5 | 2,590 |
+
+**BillSum test splits:** `test_us` (in-distribution US federal bills) and `test_ca` (out-of-distribution California bills).
+
+**NFCorpus:** Each sample contains a biomedical query and 5 candidate documents; the model must rank them by relevance. Small dataset (323 test samples).
+
+**PubMed:** Scientific article summarization from PubMed abstracts (auto-downloaded from HuggingFace Hub).
+
+### Token Length Statistics
+
+| Dataset | p95 tokens | max tokens | `max_seq_length` used |
+|---------|-----------|-----------|----------------------|
+| BillSum (bill text) | 2,941 | 4,652 | 16,384 |
+| CaseHOLD (context + options) | 553 | 691 | 1,024 |
+| PubMed (article text) | ~2,000 | ~3,500 | 2,048 + 512 |
+| NFCorpus (query + 5 docs) | ~800 | ~1,200 | 1,024 + 64 |
+
+---
+
+## Experiment Design
+
+### Phase 1: LoRA vs Full FT vs QLoRA (8 experiments)
+
+| ID | Model | Dataset | Method | Training Script | Config |
+|----|-------|---------|--------|-----------------|--------|
+| E1 | Qwen2.5-1.5B | BillSum | LoRA (r=16) | `train.py` | `lora_billsum_qwen.yaml` |
+| E2 | Llama-3.2-1B | BillSum | LoRA (r=16) | `train.py` | `lora_billsum_llama.yaml` |
+| E3 | Qwen2.5-1.5B | BillSum | Full FT | `train.py` | `full_billsum_qwen.yaml` |
+| E4 | Llama-3.2-1B | BillSum | Full FT | `train.py` | `full_billsum_llama.yaml` |
+| E5 | Qwen2.5-1.5B | CaseHOLD | LoRA (r=16) | `train.py` | `lora_casehold_qwen.yaml` |
+| E6 | Llama-3.2-1B | CaseHOLD | LoRA (r=16) | `train.py` | `lora_casehold_llama.yaml` |
+| E7 | Qwen2.5-1.5B | CaseHOLD | QLoRA 4-bit | `train_casehold_lora.py` | `qlora_casehold_qwen.yaml` |
+| E8 | Llama-3.2-1B | CaseHOLD | QLoRA 4-bit | `train_casehold_lora.py` | `qlora_casehold_llama.yaml` |
+
+### Phase 2: Full FT CaseHOLD + Random Label Baseline (6 experiments)
+
+| ID | Model | Dataset | Method | Training Script | Config |
+|----|-------|---------|--------|-----------------|--------|
+| E9  | Qwen2.5-1.5B | CaseHOLD | Full FT | `train.py` | `full_casehold_qwen.yaml` |
+| E10 | Llama-3.2-1B | CaseHOLD | Full FT | `train.py` | `full_casehold_llama.yaml` |
+| E11 | Qwen2.5-1.5B | BillSum  | LoRA (random labels) | `train.py` | `random_billsum_qwen.yaml` |
+| E12 | Llama-3.2-1B | BillSum  | LoRA (random labels) | `train.py` | `random_billsum_llama.yaml` |
+| E13 | Qwen2.5-1.5B | CaseHOLD | LoRA (random labels) | `train.py` | `random_casehold_qwen.yaml` |
+| E14 | Llama-3.2-1B | CaseHOLD | LoRA (random labels) | `train.py` | `random_casehold_llama.yaml` |
+
+### Phase 3a: Medical Domain — NFCorpus Reranking (8 experiments)
+
+| ID | Model | Dataset | Method | Config | Status |
+|----|-------|---------|--------|--------|--------|
+| E21 | Qwen2.5-1.5B | NFCorpus | LoRA (r=16) | `lora_nfcorpus_qwen.yaml` | Done |
+| E22 | Llama-3.2-1B | NFCorpus | LoRA (r=16) | `lora_nfcorpus_llama.yaml` | Done |
+| E23 | Qwen2.5-1.5B | NFCorpus | Full FT | `full_nfcorpus_qwen.yaml` | Done |
+| E24 | Llama-3.2-1B | NFCorpus | Full FT | `full_nfcorpus_llama.yaml` | Done |
+| E25 | Qwen2.5-1.5B | NFCorpus | LoRA (random labels) | `random_nfcorpus_qwen.yaml` | Done |
+| E26 | Llama-3.2-1B | NFCorpus | LoRA (random labels) | `random_nfcorpus_llama.yaml` | Done |
+| B1  | Qwen2.5-1.5B | NFCorpus | Baseline (zero-shot) | `baseline_nfcorpus_qwen.yaml` | Done |
+| B2  | Llama-3.2-1B | NFCorpus | Baseline (zero-shot) | `baseline_nfcorpus_llama.yaml` | Done |
+
+### Phase 3b: Medical Domain — PubMed Summarization (8 experiments)
+
+| ID | Model | Dataset | Method | Config | Status |
+|----|-------|---------|--------|--------|--------|
+| E15 | Qwen2.5-1.5B | PubMed | LoRA (r=16) | `lora_pubmed_qwen.yaml` | Done |
+| E16 | Llama-3.2-1B | PubMed | LoRA (r=16) | `lora_pubmed_llama.yaml` | Done |
+| E17 | Qwen2.5-1.5B | PubMed | Full FT | `full_pubmed_qwen.yaml` | Done |
+| E18 | Llama-3.2-1B | PubMed | Full FT | `full_pubmed_llama.yaml` | Done |
+| E19 | Qwen2.5-1.5B | PubMed | LoRA (random labels) | `random_pubmed_qwen.yaml` | Done |
+| E20 | Llama-3.2-1B | PubMed | LoRA (random labels) | `random_pubmed_llama.yaml` | Done |
+| B3  | Qwen2.5-1.5B | PubMed | Baseline (zero-shot) | `baseline_pubmed_qwen.yaml` | Done |
+| B4  | Llama-3.2-1B | PubMed | Baseline (zero-shot) | `baseline_pubmed_llama.yaml` | Done |
+
+**Random label experiments** shuffle the training set outputs (labels) while keeping inputs unchanged, creating a random input→output mapping. If LoRA models learn genuine task knowledge, their performance should far exceed random-label baselines.
+
+**Baseline experiments** run inference directly with the pretrained model (no fine-tuning), establishing zero-shot performance for comparison.
+
+**Server:** AutoDL H800/A800 80GB · **Seed:** 42
+
+### Hyperparameters
+
+#### Legal Tasks (Phase 1–2)
+
+| Param | LoRA / Full FT | QLoRA |
+|-------|---------------|-------|
+| LoRA r / alpha | 16 / 32 | 16 / 32 |
+| Target modules | q, k, v, o projections | q, k, v, o projections |
+| learning_rate | 2e-4 (LoRA), 2e-5 (Full FT) | 2e-4 |
+| Epochs | 1 | 1 |
+| Effective batch size | 16 | 16 |
+| Quantization | — | 4-bit NF4, double quant, bfloat16 compute |
+| `load_best_model_at_end` | True | True |
+
+#### PubMed Summarization (Phase 3b)
+
+| Param | LoRA | Full FT |
+|-------|------|---------|
+| learning_rate | 2e-4 | 2e-5 |
+| Epochs | 1 | 1 |
+| Batch (per device × grad accum) | 4 × 4 = 16 | 4 × 4 = 16 |
+| max_input / max_output | 2048 / 512 | 2048 / 512 |
+| gradient_checkpointing | True | True |
+
+#### NFCorpus Reranking (Phase 3a)
+
+| Param | LoRA | Full FT |
+|-------|------|---------|
+| learning_rate | 2e-4 | 2e-5 |
+| Epochs | 3 | 3 |
+| Batch (per device × grad accum) | 8 × 2 = 16 | 8 × 2 = 16 |
+| max_input / max_output | 1024 / 64 | 1024 / 64 |
+| gradient_checkpointing | False (LoRA) / True (Full FT) | True |
+
+---
+
+## Results
+
+### BillSum — Legal Summarization (ROUGE-2, BERTScore-F1)
+
+| Method | Model | test_us ROUGE-2 | test_ca ROUGE-2 | test_us BERTScore | test_ca BERTScore |
+|--------|-------|:--------------:|:--------------:|:----------------:|:----------------:|
+| LoRA | Qwen2.5-1.5B | 0.3725 | 0.1764 | 0.9024 | 0.8570 |
+| LoRA | Llama-3.2-1B | 0.3741 | **0.2116** | 0.8988 | 0.8583 |
+| Full FT | Qwen2.5-1.5B | 0.3688 | 0.1711 | 0.9018 | 0.8558 |
+| Full FT | Llama-3.2-1B | **0.3839** | **0.2116** | 0.9003 | 0.8585 |
+| LoRA (random) | Qwen2.5-1.5B | 0.0161 | 0.0022 | 0.8262 | 0.8168 |
+| LoRA (random) | Llama-3.2-1B | 0.0292 | 0.0144 | 0.8237 | 0.8079 |
+
+Full evaluation JSONs: `results/billsum/`
+
+### CaseHOLD — Legal Multiple-Choice Classification (Accuracy, n=5,221)
+
+| Method | Model | Accuracy |
+|--------|-------|:--------:|
+| LoRA | Qwen2.5-1.5B | **0.8602** |
+| LoRA | Llama-3.2-1B | **0.8617** |
+| Full FT | Qwen2.5-1.5B | 0.8339 |
+| Full FT | Llama-3.2-1B | **0.8632** |
+| QLoRA 4-bit | Qwen2.5-1.5B | 0.7395 |
+| QLoRA 4-bit | Llama-3.2-1B | 0.7179 |
+| LoRA (random) | Qwen2.5-1.5B | 0.2300 |
+| LoRA (random) | Llama-3.2-1B | 0.2099 |
+
+Full evaluation JSONs (incl. per-class breakdown): `results/casehold/`
+
+### NFCorpus — Medical Document Reranking (NDCG@5, MAP@5, n=323)
+
+| Method | Model | NDCG@5 | MAP@5 |
+|--------|-------|:------:|:-----:|
+| LoRA | Qwen2.5-1.5B | **0.8943** | **0.8586** |
+| LoRA | Llama-3.2-1B | 0.8913 | 0.8509 |
+| Full FT | Qwen2.5-1.5B | 0.8859 | 0.8451 |
+| Full FT | Llama-3.2-1B | 0.8820 | 0.8365 |
+| LoRA (random) | Qwen2.5-1.5B | 0.7914 | 0.7012 |
+| LoRA (random) | Llama-3.2-1B | 0.7873 | 0.6934 |
+| Baseline (zero-shot) | Qwen2.5-1.5B | 0.8271 | 0.7384 |
+| Baseline (zero-shot) | Llama-3.2-1B | 0.7879 | 0.6950 |
+
+Full evaluation JSONs: `results/nfcorpus/`
+
+### PubMed — Medical Summarization (ROUGE-1/2/L, BERTScore-F1, n=6,658)
+
+| Method | Model | ROUGE-1 | ROUGE-2 | ROUGE-L | BERTScore-F1 |
+|--------|-------|:-------:|:-------:|:-------:|:------------:|
+| LoRA | Qwen2.5-1.5B | **0.4103** | **0.1635** | **0.2472** | **0.8650** |
+| LoRA | Llama-3.2-1B | 0.4115 | 0.1598 | 0.2417 | 0.8517 |
+| Full FT | Qwen2.5-1.5B | 0.4078 | 0.1612 | 0.2453 | 0.8642 |
+| Full FT | Llama-3.2-1B | **0.4124** | 0.1609 | 0.2424 | 0.8516 |
+| LoRA (random) | Qwen2.5-1.5B | 0.1900 | 0.0149 | 0.1176 | 0.8078 |
+| LoRA (random) | Llama-3.2-1B | 0.2209 | 0.0294 | 0.1437 | 0.8043 |
+| Baseline (zero-shot) | Qwen2.5-1.5B | 0.3705 | 0.1040 | 0.1891 | 0.8292 |
+| Baseline (zero-shot) | Llama-3.2-1B | 0.4123 | 0.1400 | 0.2282 | 0.8398 |
+
+Full evaluation JSONs: `results/pubmed/`
+
+### Key Observations
+
+#### Legal Domain (BillSum + CaseHOLD)
+
+1. **LoRA ≈ Full FT on BillSum** — ROUGE-2 difference < 0.02, suggesting LoRA is sufficient for summarization at this scale.
+2. **LoRA ≈ Full FT on CaseHOLD** — Llama Full FT (0.8632) slightly outperforms LoRA (0.8617); Qwen Full FT (0.8339) slightly underperforms LoRA (0.8602), possibly due to overfitting with full-parameter updates.
+3. **Llama outperforms Qwen on domain generalization** — test_ca ROUGE-2: 0.2116 vs 0.1764 (LoRA). Both models never trained on CA bills.
+4. **QLoRA 4-bit has ~12% accuracy drop vs LoRA** on CaseHOLD (0.74 vs 0.86). Root cause: 4-bit quantization degrades small (~1B) models significantly; additionally, the installed TRL version lacks `DataCollatorForCompletionOnlyLM`, so QLoRA trains with full-sequence loss rather than answer-only loss.
+5. **Random label baselines confirm genuine learning** — On BillSum, random-label ROUGE-2 drops to near zero (0.016–0.029 vs 0.37+), a >90% relative decrease. On CaseHOLD, random-label accuracy (~0.21) is close to the random-guess baseline of 0.20 (5-way classification), while LoRA achieves 0.86.
+6. **No invalid predictions** in any CaseHOLD run — the instruction-tuned models reliably output A/B/C/D/E.
+
+#### Medical Domain (NFCorpus + PubMed)
+
+7. **LoRA ≥ Full FT consistently across medical tasks** — On NFCorpus, LoRA (NDCG@5 = 0.894) outperforms Full FT (0.886). On PubMed, LoRA Qwen (ROUGE-2 = 0.1635, BERTScore = 0.8650) marginally outperforms Full FT Qwen (0.1612, 0.8642). LoRA's parameter efficiency provides implicit regularization, preventing overfitting on both small (NFCorpus, 2.6k) and medium (PubMed, 20k) datasets.
+8. **Fine-tuning significantly improves over zero-shot on PubMed** — LoRA Qwen ROUGE-2 improves from 0.1040 (baseline) to 0.1635 (+57%), and BERTScore from 0.8292 to 0.8650. Unlike NFCorpus where the zero-shot floor was high, PubMed summarization clearly benefits from task-specific fine-tuning.
+9. **Llama has stronger zero-shot summarization than Qwen** — Llama baseline (ROUGE-1 = 0.4123, ROUGE-2 = 0.1400) substantially outperforms Qwen baseline (0.3705, 0.1040) on PubMed zero-shot, but after LoRA fine-tuning, Qwen slightly surpasses Llama on ROUGE-2 (0.1635 vs 0.1598) and BERTScore (0.8650 vs 0.8517), suggesting Qwen has higher learning potential from fine-tuning despite weaker base capabilities.
+10. **Random label baselines confirm genuine learning on PubMed** — Random-label ROUGE-2 collapses to 0.015–0.029 (vs 0.16+ with real labels), a >90% relative decrease. BERTScore also drops (0.807 vs 0.865), though less dramatically due to pretrained semantic knowledge.
+11. **NFCorpus has limited benchmark utility for LLMs** — With small test size (n=323), high variance (std ≈ 0.14–0.16), and strong zero-shot performance (Qwen baseline NDCG@5 = 0.827), NFCorpus reranking provides limited discriminative power for comparing fine-tuning strategies on instruction-tuned LLMs.
+
+---
+
+## Notes on QLoRA Implementation
+
+`train_casehold_lora.py` uses TRL `SFTTrainer` + bitsandbytes 4-bit quantization. The installed TRL version on AutoDL does **not** export `DataCollatorForCompletionOnlyLM`, so the trainer falls back to full-sequence loss (all tokens supervised, not answer-only). This is the primary reason for the ~12% accuracy gap between QLoRA and LoRA.
+
+## Notes on Random Label Baseline
+
+Random label experiments (E11–E14, E19–E20, E25–E26) use the same LoRA configuration as normal training, but the training set outputs are randomly shuffled (input text remains unchanged). This creates a sanity check:
+
+- **BillSum:** Random-label ROUGE-2 collapses to 0.016–0.029 (vs 0.37+ with real labels), confirming LoRA learns genuine summarization ability.
+- **CaseHOLD:** Random-label accuracy drops to ~0.21, close to 1/5 = 0.20 random-guess level (vs 0.86 with real labels). The slight difference from 0.20 is due to class distribution bias in the shuffled labels.
+- **NFCorpus:** Random-label NDCG@5 (0.79) is comparable to zero-shot baseline (0.79–0.83), confirming the random-label model does not learn useful reranking signals. The relatively high absolute score is due to the pretrained model's inherent query-document matching ability (lexical/semantic overlap), not task-specific learning.
+- **PubMed:** Random-label ROUGE-2 drops to 0.015–0.029 (vs 0.16+ with real labels), confirming LoRA learns genuine summarization ability. BERTScore also degrades (0.804–0.808 vs 0.852–0.865).
+
+Random label data is generated on-the-fly in the respective `autodl_run_phase*.ipynb` notebooks (not committed to git).
+
+## Notes on Baseline (Zero-Shot) Experiments
+
+Baseline experiments run the pretrained model directly on test data without any fine-tuning. This establishes a lower bound and quantifies how much value fine-tuning adds:
+
+- **NFCorpus:** Qwen zero-shot achieves NDCG@5 = 0.827, only 0.067 below LoRA (0.894). This high zero-shot floor suggests that instruction-tuned LLMs already possess strong query-document relevance judgment from pretraining.
+- **PubMed:** Qwen zero-shot achieves ROUGE-2 = 0.104, jumping to 0.164 with LoRA (+57%). Llama zero-shot is stronger (0.140) but gains less from LoRA (0.160, +14%), indicating model-dependent fine-tuning returns.
