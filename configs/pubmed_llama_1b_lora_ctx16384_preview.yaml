@@ -1,0 +1,21 @@
+project:
+  name: g104_pubmed_llama_1b_lora
+  task: pubmed
+  output_root: ../outputs/pubmed_llama_1b_lora
+
+data:
+  train_file: ../data/pubmed/train_sft.jsonl
+  valid_file: ../data/pubmed/val_sft.jsonl
+  test_file: ../data/pubmed/test_sft.jsonl
+
+model_name: meta-llama/Llama-3.2-1B-Instruct
+adapter_dir: ../MLP_组员微调_最新/models/pubmed/lora_llama
+
+generation:
+  max_input_tokens: 16384
+  max_new_tokens: 512
+  do_sample: false
+  num_beams: 1
+
+evaluation:
+  rouge_use_stemmer: true

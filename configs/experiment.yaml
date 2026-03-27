@@ -1,0 +1,64 @@
+project:
+  name: g104_casehold_interpretability
+  phase: phase1
+  task: casehold
+  output_root: ../outputs
+
+data:
+  raw_dir: ../data/raw
+  processed_dir: ../data/processed
+  dataset_name: local_preprocessed_casehold
+  preprocessed_train_file: "../casehold preprocessing/output/casehold/train_cls.jsonl"
+  preprocessed_valid_file: "../casehold preprocessing/output/casehold/validation_cls.jsonl"
+  preprocessed_test_file: "../casehold preprocessing/output/casehold/test_cls.jsonl"
+  train_file: ../data/processed/casehold_train.jsonl
+  valid_file: ../data/processed/casehold_validation.jsonl
+  test_file: ../data/processed/casehold_test.jsonl
+  fixed_eval_subset_file: ../data/processed/casehold_eval_fixed.jsonl
+  fixed_eval_subset_size: 256
+
+model_name: Qwen/Qwen2.5-1.5B-Instruct
+backend: hf_lora
+
+lora_config:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+
+seed: 42
+seeds:
+  - 42
+  - 43
+  - 44
+
+train_args:
+  num_train_epochs: 1
+  learning_rate: 0.0002
+  per_device_train_batch_size: 1
+  per_device_eval_batch_size: 1
+  gradient_accumulation_steps: 8
+  warmup_ratio: 0.03
+  logging_steps: 20
+  save_strategy: epoch
+  eval_strategy: epoch
+  max_seq_length: 1024
+
+experiments:
+  - pretrained
+  - lora_sft
+  - random_label
+
+metrics:
+  faithfulness_topk_ratio: 0.2
+  deletion_steps: 10
+  insertion_steps: 10
+  bootstrap_samples: 1000
+
+analysis:
+  cka_layers: [0, 4, 8, 12]
+  attention_bins: 20

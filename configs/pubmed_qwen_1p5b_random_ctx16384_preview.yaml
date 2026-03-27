@@ -1,0 +1,21 @@
+project:
+  name: g104_pubmed_qwen_1p5b_random
+  task: pubmed
+  output_root: ../outputs/pubmed_qwen_1p5b_random
+
+data:
+  train_file: ../data/pubmed/train_sft.jsonl
+  valid_file: ../data/pubmed/val_sft.jsonl
+  test_file: ../data/pubmed/test_sft.jsonl
+
+model_name: Qwen/Qwen2.5-1.5B-Instruct
+adapter_dir: ../MLP_组员微调_最新/models/pubmed/random_qwen
+
+generation:
+  max_input_tokens: 16384
+  max_new_tokens: 512
+  do_sample: false
+  num_beams: 1
+
+evaluation:
+  rouge_use_stemmer: true

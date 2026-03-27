@@ -1,0 +1,22 @@
+project:
+  name: g104_billsum_qwen_1p5b_lora
+  task: billsum
+  output_root: ../outputs/billsum_qwen_1p5b_lora
+
+data:
+  train_file: ../billsum data cleaning/output/train_sft.jsonl
+  valid_file: ../billsum data cleaning/output/val_sft.jsonl
+  test_us_file: ../billsum data cleaning/output/test_us_sft.jsonl
+  test_ca_file: ../billsum data cleaning/output/test_ca_sft.jsonl
+
+model_name: Qwen/Qwen2.5-1.5B-Instruct
+adapter_dir: ../outputs/billsum_qwen_1p5b_lora/adapter
+
+generation:
+  max_input_tokens: 16384
+  max_new_tokens: 2048
+  do_sample: false
+  num_beams: 1
+
+evaluation:
+  rouge_use_stemmer: true
